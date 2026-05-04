@@ -58,9 +58,9 @@ builder.Services.AddHostedService<KycAutoVerificationService>();
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
 var rsa = RSA.Create();
-if (!File.Exists(jwtSettings.PublicKeyPath))
+if (!File.Exists(jwtSettings?.PublicKeyPath))
 {
-    throw new FileNotFoundException("Key file missing", jwtSettings.PublicKeyPath);
+    throw new FileNotFoundException("Key file missing", jwtSettings?.PublicKeyPath);
 }
 var pemContent = File.ReadAllText(jwtSettings.PublicKeyPath);
 rsa.ImportFromPem(pemContent);

@@ -1,5 +1,6 @@
 ﻿
 using SimulatedBank.Enums;
+using System.ComponentModel.DataAnnotations;
 
 namespace SimulatedBank.Entities
 {
@@ -28,6 +29,10 @@ namespace SimulatedBank.Entities
 
         public DateTime CreatedAt { get; private set; }
 
+        public Guid  ExternalBankAccountId { get;  set; }
+
+        [Timestamp]
+        public byte[] RowVersion { get; set; }
 
         private BankAccount() { }
 
@@ -56,16 +61,18 @@ namespace SimulatedBank.Entities
         }
 
         // Business Logic Methods
-        public void Credit(decimal amount, string description)
+        public Transaction Credit(decimal amount, string description)
         {
             ValidateAmount(amount);
 
             Balance += amount;
 
-            Transactions.Add(Transaction.CreateCredit(BankAccountId, amount, description));
+            var transaction = Transaction.CreateCredit(BankAccountId, amount, description);
+            Transactions.Add(transaction);
+            return transaction;
         }
 
-        public void Debit(decimal amount, string description)
+        public Transaction Debit(decimal amount, string description)
         {
             ValidateAmount(amount);
 
@@ -74,7 +81,9 @@ namespace SimulatedBank.Entities
 
             Balance -= amount;
 
-            Transactions.Add(Transaction.CreateDebit(BankAccountId, amount, description));
+            var transaction = Transaction.CreateDebit(BankAccountId, amount, description);
+            Transactions.Add(transaction);
+            return transaction;
         }
 
         public void Deactivate()
