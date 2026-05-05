@@ -19,7 +19,7 @@ namespace WalletSystem.Core.Entities
         public Guid ExternalBankAccountId { get; set; }
 
         [Required]
-        [StringLength(4)]
+        [StringLength(10)]
         public string MaskedAccountNumber { get; set; }
 
         [Required]

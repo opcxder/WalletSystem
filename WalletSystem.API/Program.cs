@@ -32,6 +32,11 @@ builder.Services.AddOptions<JwtSettings>().BindConfiguration("JwtSettings")
         File.Exists(s.PublicKeyPath);
     }, "JWt key files are missing").ValidateOnStart();
 
+builder.Services.AddHttpClient<IBankVerificationService,BankVerificationService>(client =>
+{
+    client.BaseAddress = new Uri("https://localhost:5002");
+});
+
 
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IUserCredentialsRepository , UserCredentialRepository>();

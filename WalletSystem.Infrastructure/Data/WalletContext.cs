@@ -302,7 +302,7 @@ namespace WalletSystem.Infrastructure.Data
 
                 entity.Property(l => l.MaskedAccountNumber)
                       .IsRequired()
-                      .HasMaxLength(4);
+                      .HasMaxLength(10);
 
                 entity.Property(l => l.BankName)
                       .IsRequired()

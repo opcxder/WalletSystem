@@ -14,6 +14,6 @@ namespace SimulatedBank.Dtos
 
         public string? Message { get; set; }
 
-        public Guid ExternalBankAccountId { get; set; }
+        public string? VerificationToken { get; set; }
     }
 }

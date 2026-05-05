@@ -35,23 +35,59 @@ namespace SimulatedBank.Controllers
 
             try
             {
-                var result = await _bankService.VerifyAndLinkAccount(verifyAccount);
-
-                if (result == null)
-                {
-                    return NotFound(new VerifyAccountResponse
-                    {
-                        IsValid = false,
-                        Message = "Bank Account not found"
-                    });
-                }
-
+                var result = await _bankService.VerifyAccountHolder(verifyAccount);
                 return Ok(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error: Bank Controller Verify account method");
                 return StatusCode(500, "Something went wrong");
+            }
+        }
+
+        [HttpPost("link")]
+        public async Task<IActionResult> LinkAccount([FromBody] LinkRequest request)
+        {
+            _logger.LogInformation("Linking bank account using verification token");
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new LinkReponse
+                {
+                    Success = false,
+                    Message = "Invalid request data"
+                });
+            }
+
+            try
+            {
+                var result = await _bankService.LinkAccount(request);
+
+                if (result == null)
+                {
+                    return NotFound(new LinkReponse
+                    {
+                        Success = false,
+                        Message = "Linking failed"
+                    });
+                }
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error: Bank Controller Link account method");
+
+                return StatusCode(500, new LinkReponse
+                {
+                    Success = false,
+                    Message = "Something went wrong"
+                });
             }
         }
 
@@ -136,6 +172,7 @@ namespace SimulatedBank.Controllers
             return Ok(result);
       
         }
+
 
     }
 }

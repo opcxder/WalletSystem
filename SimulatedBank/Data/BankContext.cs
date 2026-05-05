@@ -12,6 +12,8 @@ namespace SimulatedBank.Data
         public DbSet<BankAccount> BankAccounts { get; set; }
         public DbSet<Transaction> Transactions { get; set; }
 
+        public DbSet<VerificationToken> VerificationTokens { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -59,6 +61,8 @@ namespace SimulatedBank.Data
                 entity.Property(e => e.CreatedAt)
                       .HasDefaultValueSql("getutcdate()");
 
+                
+
                 entity.HasMany(e => e.Transactions)
                       .WithOne()
                       .HasForeignKey(t => t.BankAccountId)
@@ -83,6 +87,21 @@ namespace SimulatedBank.Data
 
                 entity.Property(e => e.CreatedAt)
                       .HasDefaultValueSql("getutcdate()");
+            });
+
+            //verification token
+            modelBuilder.Entity<VerificationToken>(entity =>
+            {
+                entity.HasKey(v => v.TokenId);
+                entity.Property(v => v.CreatedAt).HasDefaultValueSql("getutcdate()");
+                entity.HasIndex(v => v.BankAccountId);
+                entity.HasIndex(v => v.TokenHash).IsUnique();
+                entity.Property(v => v.ExpiryDate).HasDefaultValueSql("DATEADD(MINUTE, 5, GETUTCDATE())");
+
+                entity.HasOne(v => v.BankAccount)
+                      .WithMany() 
+                      .HasForeignKey(v => v.BankAccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<Bank>().HasData(new
@@ -114,7 +133,8 @@ namespace SimulatedBank.Data
                 IsActive = true,
                 BankId = Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
                 BankName = "WPay Simulated Bank",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                ExternalBankAccountId = Guid.Empty
 
             },
 
@@ -128,7 +148,8 @@ namespace SimulatedBank.Data
                  IsActive = true,
                  BankId = Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
                  BankName = "WPay Simulated Bank",
-                 CreatedAt = DateTime.UtcNow
+                 CreatedAt = DateTime.UtcNow,
+                 ExternalBankAccountId = Guid.Empty
 
              },
               new
@@ -141,7 +162,8 @@ namespace SimulatedBank.Data
                   IsActive = true,
                   BankId = Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
                   BankName = "WPay Simulated Bank",
-                  CreatedAt = new DateTime(2024, 1, 4)
+                  CreatedAt = new DateTime(2024, 1, 4),
+                  ExternalBankAccountId = Guid.Empty
               },
     new
     {
@@ -151,9 +173,10 @@ namespace SimulatedBank.Data
         AccountType = AccountType.Current,
         Balance = 88000m,
         IsActive = true,
-        BankId = Guid.Parse("b2c3d4e5-f6a7-8901-bcde-f23456789012"),
+        BankId = Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
         BankName = "WPay Simulated Bank",
-        CreatedAt = new DateTime(2024, 1, 5)
+        CreatedAt = new DateTime(2024, 1, 5),
+        ExternalBankAccountId = Guid.Empty
     }
 
 

@@ -2,6 +2,9 @@
 using SimulatedBank.Data;
 using SimulatedBank.Dtos;
 using SimulatedBank.Entities;
+using System.Runtime.Intrinsics.Arm;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
 
 
 namespace SimulatedBank.Services
@@ -14,10 +17,8 @@ namespace SimulatedBank.Services
             _bankContext = bankContext;
         }
 
-
-        public async Task<VerifyAccountResponse> VerifyAndLinkAccount(VerifyAccount verifyAccount)
+        public async Task<VerifyAccountResponse> VerifyAccountHolder(VerifyAccount verifyAccount)
         {
-      
             if (verifyAccount == null ||
                 string.IsNullOrWhiteSpace(verifyAccount.AccountNumber) ||
                 string.IsNullOrWhiteSpace(verifyAccount.AccountHolderName) ||
@@ -30,45 +31,12 @@ namespace SimulatedBank.Services
                 };
             }
 
-           
             var account = await _bankContext.BankAccounts
                 .Include(b => b.Bank)
-                .FirstOrDefaultAsync(b => b.AccountNumber == verifyAccount.AccountNumber);
+                .FirstOrDefaultAsync(bc =>
+                    bc.AccountNumber == verifyAccount.AccountNumber &&
+                    bc.Bank.IFSCCode == verifyAccount.IFSCCode);
 
-            if (account == null)
-            {
-                return new VerifyAccountResponse
-                {
-                    IsValid = false,
-                    Message = "Account not found"
-                };
-            }
-
-           
-            var verify = VerifyAccountHolder(account, verifyAccount);
-
-            if (!verify.IsValid)
-                return verify;
-
-
-            var link = await LinkAccount(account);
-
-            if (!link)
-            {
-                verify.IsValid = false;
-                verify.Message = "Unable to link the account";
-                return verify;
-            }
-
-         
-            verify.Message = "Account verified and linked successfully";
-            verify.ExternalBankAccountId = account.ExternalBankAccountId;
-
-            return verify;
-        }
-
-        public VerifyAccountResponse VerifyAccountHolder(BankAccount account, VerifyAccount verifyAccount)
-        {
             if (account == null || account.Bank == null)
             {
                 return new VerifyAccountResponse
@@ -78,39 +46,14 @@ namespace SimulatedBank.Services
                 };
             }
 
-            if (!string.Equals(verifyAccount.AccountHolderName, account.AccountHolderName, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(verifyAccount.AccountHolderName, account.AccountHolderName, StringComparison.OrdinalIgnoreCase) ||
+                verifyAccount.AccountType != account.AccountType ||
+                !account.IsActive)
             {
                 return new VerifyAccountResponse
                 {
                     IsValid = false,
-                    Message = "Account Details Not Found"
-                };
-            }
-
-            if (verifyAccount.AccountType != account.AccountType)
-            {
-                return new VerifyAccountResponse
-                {
-                    IsValid = false,
-                    Message = "Account Details Not Found"
-                };
-            }
-
-            if (account.Bank.IFSCCode == null || account.Bank.IFSCCode != verifyAccount.IFSCCode)
-            {
-                return new VerifyAccountResponse
-                {
-                    IsValid = false,
-                    Message = "Account Details Not Found"
-                };
-            }
-
-            if (!account.IsActive)
-            {
-                return new VerifyAccountResponse
-                {
-                    IsValid = false,
-                    Message = "Account is not active"
+                    Message = "Account Details Not Valid"
                 };
             }
 
@@ -119,6 +62,33 @@ namespace SimulatedBank.Services
                 ? new string('*', acc.Length - 4) + acc[^4..]
                 : acc;
 
+            var token = GenerateToken();
+            var tokenHash = HashToken(token);
+
+            var verification = new VerificationToken
+            {
+                TokenId = Guid.NewGuid(),
+                BankAccountId = account.BankAccountId,
+                TokenHash = tokenHash,
+                ExpiryDate = DateTime.UtcNow.AddMinutes(5),
+                IsUsed = false
+            };
+
+            await _bankContext.VerificationTokens.AddAsync(verification);
+
+            try
+            {
+                await _bankContext.SaveChangesAsync();
+            }
+            catch
+            {
+                return new VerifyAccountResponse
+                {
+                    IsValid = false,
+                    Message = "Unable to create token"
+                };
+            }
+
             return new VerifyAccountResponse
             {
                 IsValid = true,
@@ -126,8 +96,86 @@ namespace SimulatedBank.Services
                 MaskedAccountNumber = masked,
                 AccountType = account.AccountType,
                 IFSCCode = account.Bank.IFSCCode,
-                Message = "Account Details Found"
+                Message = "Account Verified",
+                VerificationToken = token
             };
+        }
+
+        public async Task<LinkReponse> LinkAccount(LinkRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.VerificationToken))
+            {
+                return new LinkReponse
+                {
+                    Success = false,
+                    Message = "Invalid request"
+                };
+            }
+
+            var tokenHash = HashToken(request.VerificationToken);
+
+            var token = await _bankContext.VerificationTokens
+                .Include(v => v.BankAccount)
+                .FirstOrDefaultAsync(v =>
+                    v.TokenHash == tokenHash &&
+                    !v.IsUsed &&
+                    v.ExpiryDate > DateTime.UtcNow);
+
+            if (token == null)
+            {
+                return new LinkReponse
+                {
+                    Success = false,
+                    Message = "Invalid or expired token"
+                };
+            }
+
+            using var tx = await _bankContext.Database.BeginTransactionAsync();
+
+            try
+            {
+                var account = token.BankAccount;
+
+                // Already linked case
+                if (account.ExternalBankAccountId != null)
+                {
+                    token.IsUsed = true;
+                    await _bankContext.SaveChangesAsync();
+                    await tx.CommitAsync();
+
+                    return new LinkReponse
+                    {
+                        Success = true,
+                        Message = "Account already linked",
+                        ExternalReferenceId = account.ExternalBankAccountId
+                    };
+                }
+
+                var externalId = Guid.NewGuid();
+
+                account.ExternalBankAccountId = externalId;
+                token.IsUsed = true;
+
+                await _bankContext.SaveChangesAsync();
+                await tx.CommitAsync();
+
+                return new LinkReponse
+                {
+                    Success = true,
+                    Message = "Account linked successfully",
+                    ExternalReferenceId = externalId
+                };
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+
+                return new LinkReponse
+                {
+                    Success = false,
+                    Message = "Linking failed"
+                };
+            }
         }
         public async Task<CheckBalanceReponse> CheckBalance(string accountNumber)
         {
@@ -298,6 +346,24 @@ return new OperationReponse
             {
                 return false;
             }
+        }
+    
+      
+        private static string GenerateToken()
+        {
+            var bytes = RandomNumberGenerator.GetBytes(7);
+            return Convert.ToBase64String(bytes); 
+        }
+       private static string HashToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                throw new ArgumentException("Token is empty");
+
+            }
+            var sha = SHA256.Create();
+            var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(token));
+            return Convert.ToBase64String(bytes);
         }
     }
 }

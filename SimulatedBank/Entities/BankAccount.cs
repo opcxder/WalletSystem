@@ -29,7 +29,7 @@ namespace SimulatedBank.Entities
 
         public DateTime CreatedAt { get; private set; }
 
-        public Guid  ExternalBankAccountId { get;  set; }
+        public Guid? ExternalBankAccountId { get; set; } 
 
         [Timestamp]
         public byte[] RowVersion { get; set; }
