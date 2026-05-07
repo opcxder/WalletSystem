@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Azure.Core;
+using Microsoft.EntityFrameworkCore;
 using SimulatedBank.Data;
 using SimulatedBank.Dtos;
 using SimulatedBank.Entities;
@@ -12,21 +13,26 @@ namespace SimulatedBank.Services
     public class BankService
     {
         private readonly BankContext _bankContext;
+        private readonly ILogger<BankService> _logger;
 
-        public BankService(BankContext bankContext) {
+        public BankService(BankContext bankContext, ILogger<BankService> logger)
+        {
             _bankContext = bankContext;
+            _logger = logger;
         }
 
-        public async Task<VerifyAccountResponse> VerifyAccountHolder(VerifyAccount verifyAccount)
+        public async Task<VerifyAccountResponse> VerifyAccountHolder(VerifyAccount verifyAccount,CancellationToken ct)
         {
             if (verifyAccount == null ||
                 string.IsNullOrWhiteSpace(verifyAccount.AccountNumber) ||
                 string.IsNullOrWhiteSpace(verifyAccount.AccountHolderName) ||
-                string.IsNullOrWhiteSpace(verifyAccount.IFSCCode))
+                string.IsNullOrWhiteSpace(verifyAccount.IFSCCode) ||
+                string.IsNullOrWhiteSpace(verifyAccount.BankName)
+                )
             {
                 return new VerifyAccountResponse
                 {
-                    IsValid = false,
+                    Success = false,
                     Message = "Account Details Missing"
                 };
             }
@@ -41,7 +47,7 @@ namespace SimulatedBank.Services
             {
                 return new VerifyAccountResponse
                 {
-                    IsValid = false,
+                    Success = false,
                     Message = "Account Details Not Found"
                 };
             }
@@ -52,7 +58,7 @@ namespace SimulatedBank.Services
             {
                 return new VerifyAccountResponse
                 {
-                    IsValid = false,
+                    Success = false,
                     Message = "Account Details Not Valid"
                 };
             }
@@ -74,34 +80,35 @@ namespace SimulatedBank.Services
                 IsUsed = false
             };
 
-            await _bankContext.VerificationTokens.AddAsync(verification);
+            await _bankContext.VerificationTokens.AddAsync(verification, ct);
 
             try
             {
-                await _bankContext.SaveChangesAsync();
+                await _bankContext.SaveChangesAsync(ct);
             }
             catch
             {
                 return new VerifyAccountResponse
                 {
-                    IsValid = false,
+                    Success = false,
                     Message = "Unable to create token"
                 };
             }
 
             return new VerifyAccountResponse
             {
-                IsValid = true,
+                Success = true,
                 AccountHolderName = account.AccountHolderName,
                 MaskedAccountNumber = masked,
                 AccountType = account.AccountType,
+                BankName = account.BankName,
                 IFSCCode = account.Bank.IFSCCode,
                 Message = "Account Verified",
                 VerificationToken = token
             };
         }
 
-        public async Task<LinkReponse> LinkAccount(LinkRequest request)
+        public async Task<LinkReponse> LinkAccount(LinkRequest request, CancellationToken ct)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.VerificationToken))
             {
@@ -137,10 +144,11 @@ namespace SimulatedBank.Services
                 var account = token.BankAccount;
 
                 // Already linked case
-                if (account.ExternalBankAccountId != null)
+                if (account.ExternalBankAccountId.HasValue &&
+                    account.ExternalBankAccountId.Value != Guid.Empty)
                 {
                     token.IsUsed = true;
-                    await _bankContext.SaveChangesAsync();
+                    await _bankContext.SaveChangesAsync(ct);
                     await tx.CommitAsync();
 
                     return new LinkReponse
@@ -152,11 +160,12 @@ namespace SimulatedBank.Services
                 }
 
                 var externalId = Guid.NewGuid();
-
+                _logger.LogInformation("External id we have created: {id}", externalId);
                 account.ExternalBankAccountId = externalId;
+                _logger.LogInformation("External id we have assigned to the account: {id}", account.ExternalBankAccountId);
                 token.IsUsed = true;
 
-                await _bankContext.SaveChangesAsync();
+                await _bankContext.SaveChangesAsync(ct);
                 await tx.CommitAsync();
 
                 return new LinkReponse
@@ -177,39 +186,40 @@ namespace SimulatedBank.Services
                 };
             }
         }
-        public async Task<CheckBalanceReponse> CheckBalance(string accountNumber)
+        public async Task<CheckBalanceReponse> CheckBalance(Guid externalRefernceId , CancellationToken ct)
         {
 
-            if (string.IsNullOrEmpty(accountNumber))
+            if (externalRefernceId != Guid.Empty)
             {
                 return new CheckBalanceReponse
                 {
-                    success = false,
-                    message = "Account number not found"
+                    Success = false,
+                    Message = "Refernce ID  is required"
                 };
             }
 
-            var res = await _bankContext.BankAccounts.AsNoTracking().FirstOrDefaultAsync(x => x.AccountNumber == accountNumber);
-            if (res == null) {
+            var res = await _bankContext.BankAccounts.AsNoTracking().FirstOrDefaultAsync(x => x.ExternalBankAccountId == externalRefernceId, ct);
+            if (res == null)
+            {
                 return new CheckBalanceReponse
                 {
-                    success = false,
-                    message = "Account number not found"
+                    Success = false,
+                    Message = "Refernce ID not found"
                 };
             }
             if (!res.IsActive)
             {
                 return new CheckBalanceReponse
                 {
-                    success = false,
-                    message = "Account is inactive"
+                    Success = false,
+                    Message = "Account is inactive"
                 };
             }
 
             return new CheckBalanceReponse
             {
-                success = true,
-                balance = res.Balance,
+                Success = true,
+                Balance = res.Balance,
             };
         }
 
@@ -227,7 +237,8 @@ namespace SimulatedBank.Services
 
             var account = await _bankContext.BankAccounts.FirstOrDefaultAsync(x => x.ExternalBankAccountId == ExternalReferenceId);
 
-            if (account == null) {
+            if (account == null)
+            {
                 return new OperationReponse
                 {
                     success = false,
@@ -305,56 +316,56 @@ namespace SimulatedBank.Services
             var transaction = account.Credit(amount, "Wallet request for money");
 
 
-           try
-{
-    await _bankContext.SaveChangesAsync();
-}
-catch (DbUpdateConcurrencyException)
-{
-    return new OperationReponse
-    {
-        success = false,
-        message = "Transaction failed due to concurrent update. Please retry."
-    };
-}
-
-return new OperationReponse
-{
-    success = true,
-    message = "Operation done",
-    TransactionId = transaction.TransactionId
-};
-        }
-
-
-        public async Task<bool> LinkAccount(BankAccount account)
-        {
-            if (account == null || !account.IsActive)
-                return false;
-
-           
-            if (account.ExternalBankAccountId != Guid.Empty)
-                return true;
-
             try
             {
-                account.ExternalBankAccountId = Guid.NewGuid();
                 await _bankContext.SaveChangesAsync();
-                return true;
             }
-            catch
+            catch (DbUpdateConcurrencyException)
             {
-                return false;
+                return new OperationReponse
+                {
+                    success = false,
+                    message = "Transaction failed due to concurrent update. Please retry."
+                };
             }
+
+            return new OperationReponse
+            {
+                success = true,
+                message = "Operation done",
+                TransactionId = transaction.TransactionId
+            };
         }
-    
-      
+
+
+        //public async Task<bool> LinkAccount(BankAccount account, CancellationToken ct)
+        //{
+        //    if (account == null || !account.IsActive)
+        //        return false;
+
+
+        //    if (account.ExternalBankAccountId != Guid.Empty)
+        //        return true;
+
+        //    try
+        //    {
+        //        account.ExternalBankAccountId = Guid.NewGuid();
+        //        await _bankContext.SaveChangesAsync(ct);
+        //        return true;
+        //    }
+        //    catch
+        //    {
+        //        return false;
+        //    }
+        //}
+
+
         private static string GenerateToken()
         {
             var bytes = RandomNumberGenerator.GetBytes(7);
-            return Convert.ToBase64String(bytes); 
+            return Convert.ToBase64String(bytes);
         }
-       private static string HashToken(string token)
+        private static string HashToken(string token)
         {
             if (string.IsNullOrWhiteSpace(token))
             {

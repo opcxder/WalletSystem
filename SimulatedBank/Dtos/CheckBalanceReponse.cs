@@ -1,11 +1,10 @@
-﻿namespace SimulatedBank.Dtos
-{
+﻿namespace SimulatedBank.Dtos { 
     public class CheckBalanceReponse
     {
 
-        public bool success { get; set; }
-        public decimal balance { get; set; }
+        public bool Success { get; set; }
+        public decimal Balance { get; set; }
 
-        public string? message { get; set; }
+        public string? Message { get; set; }
     }
 }

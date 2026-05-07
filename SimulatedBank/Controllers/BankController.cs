@@ -5,7 +5,7 @@ using SimulatedBank.Services;
 
 namespace SimulatedBank.Controllers
 {
-    [Route("api/[controller]/accounts")]
+    [Route("api/v1/[controller]/accounts")]
     [ApiController]
     public class BankController : ControllerBase
     {
@@ -19,15 +19,15 @@ namespace SimulatedBank.Controllers
 
 
         [HttpPost("verify")]
-        public async Task<IActionResult> VerifyAccount([FromBody] VerifyAccount verifyAccount)
+        public async Task<IActionResult> VerifyAccount([FromBody] VerifyAccount verifyAccount, CancellationToken ct )
         {
             _logger.LogInformation("Verifying account {AccountNumber}", verifyAccount.AccountNumber);
 
             if (!ModelState.IsValid)
             {
                 var response = new VerifyAccountResponse
-                {
-                    IsValid = false,
+                {   
+                    Success = false,
                     Message = "Invalid request data"
                 };
                 return BadRequest(response);
@@ -35,7 +35,7 @@ namespace SimulatedBank.Controllers
 
             try
             {
-                var result = await _bankService.VerifyAccountHolder(verifyAccount);
+                var result = await _bankService.VerifyAccountHolder(verifyAccount,ct);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -46,7 +46,7 @@ namespace SimulatedBank.Controllers
         }
 
         [HttpPost("link")]
-        public async Task<IActionResult> LinkAccount([FromBody] LinkRequest request)
+        public async Task<IActionResult> LinkAccount([FromBody] LinkRequest request ,CancellationToken ct)
         {
             _logger.LogInformation("Linking bank account using verification token");
 
@@ -61,7 +61,8 @@ namespace SimulatedBank.Controllers
 
             try
             {
-                var result = await _bankService.LinkAccount(request);
+                var result = await _bankService.LinkAccount(request , ct);
+                _logger.LogInformation("External id we are sending: {id}", result.ExternalReferenceId);
 
                 if (result == null)
                 {
@@ -93,25 +94,25 @@ namespace SimulatedBank.Controllers
 
 
         [HttpGet("check-balance")]
-        public async Task<IActionResult> CheckBalance([FromQuery] CheckBalanceRequest request)
+        public async Task<IActionResult> CheckBalance([FromQuery] CheckBalanceRequest request, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(request.AccountNumber))
+            if (request.ExternalReferenceId != Guid.Empty)
             {
                 return BadRequest(new CheckBalanceReponse
                 {
-                    success = false,
-                    message = "Account number is required"
+                    Success = false,
+                    Message = "Refernce ID  is required"
                 });
             }
 
-            var result = await _bankService.CheckBalance(request.AccountNumber);
+            var result = await _bankService.CheckBalance(request.ExternalReferenceId, ct);
 
-            if (result == null || !result.success)
+            if (result == null || !result.Success)
             {
                 return NotFound(new CheckBalanceReponse
                 {
-                    success = false,
-                    message = "Unable to perform the operation"
+                    Success = false,
+                    Message = "Unable to perform the operation"
                 });
             }
 

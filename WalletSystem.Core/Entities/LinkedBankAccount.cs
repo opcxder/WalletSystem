@@ -22,6 +22,8 @@ namespace WalletSystem.Core.Entities
         [StringLength(10)]
         public string MaskedAccountNumber { get; set; }
 
+        public string AccountHolderName { get; set; }
+
         [Required]
         [StringLength(100)]
         public string BankName { get; set; }

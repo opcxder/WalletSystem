@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Security.Cryptography;
 using System.Text.Json;
 using WalletSystem.Core.Interfaces.Repositories;
@@ -11,6 +12,8 @@ using WalletSystem.Infrastructure.ExternalServices;
 using WalletSystem.Infrastructure.Repositories;
 using WalletSystem.Services.Auth;
 using WalletSystem.Services.Background;
+using WalletSystem.Services.LinkedBank;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,10 +35,7 @@ builder.Services.AddOptions<JwtSettings>().BindConfiguration("JwtSettings")
         File.Exists(s.PublicKeyPath);
     }, "JWt key files are missing").ValidateOnStart();
 
-builder.Services.AddHttpClient<IBankVerificationService,BankVerificationService>(client =>
-{
-    client.BaseAddress = new Uri("https://localhost:5002");
-});
+
 
 
 builder.Services.AddScoped<IEmailService, EmailService>();
@@ -47,8 +47,43 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
 builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<WalletContext>());
 
+builder.Services.AddScoped<ILinkedBankAccountService, LinkedBankAccountService>();
+builder.Services.AddScoped<ILinkedBankAccountRepository, LinkedBankAccountRepository>();
+
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "WalletSystem API",
+        Version = "v1"
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter JWT token"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -89,6 +124,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+
+
+
+builder.Services.AddHttpClient<IBankVerificationService, BankVerificationService>(client =>
+{
+    client.BaseAddress = new Uri(
+        builder.Configuration["ExternalServices:SimulatedBankBaseUrl"]!);
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 
 var app = builder.Build();

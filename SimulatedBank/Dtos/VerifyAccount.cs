@@ -10,6 +10,8 @@ namespace SimulatedBank.Dtos
 
         public string AccountNumber { get;  set; }
 
+        public string BankName { get; set; }
+
         public AccountType AccountType { get; set; }
 
         [StringLength(20)]
