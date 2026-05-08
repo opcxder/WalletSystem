@@ -41,5 +41,16 @@ namespace WalletSystem.Infrastructure.Repositories
             _walletContext.UserCredentials.Update(credentials);
             return Task.CompletedTask;
         }
+   
+       
+        public async Task<UserCredentials?> GetByUserIdForUpdateAsync(Guid userId, CancellationToken ct = default)
+        {
+            if (userId == Guid.Empty)
+                throw new ArgumentException("Invalid userId", nameof(userId));
+
+            return await _walletContext.UserCredentials
+                .FirstOrDefaultAsync(x => x.UserId == userId, ct);
+        }
+
     }
 }

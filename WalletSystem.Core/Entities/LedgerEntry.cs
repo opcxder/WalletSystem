@@ -31,6 +31,10 @@ namespace WalletSystem.Core.Entities
         [Column(TypeName = "decimal(18,2)")]
         public decimal BalanceAfter { get; set; }
 
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal BalanceBefore { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
    
 

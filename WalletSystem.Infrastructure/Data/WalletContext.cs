@@ -266,6 +266,10 @@ namespace WalletSystem.Infrastructure.Data
                 entity.Property(l => l.BalanceAfter)
                       .HasColumnType("decimal(18,2)")
                       .IsRequired();
+                
+                entity.Property(l => l.BalanceBefore)
+                      .HasColumnType("decimal(18,2)")
+                      .IsRequired();
 
                 entity.Property(l => l.CreatedAt)
                       .HasDefaultValueSql("getutcdate()");

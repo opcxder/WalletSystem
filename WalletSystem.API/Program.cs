@@ -13,6 +13,7 @@ using WalletSystem.Infrastructure.Repositories;
 using WalletSystem.Services.Auth;
 using WalletSystem.Services.Background;
 using WalletSystem.Services.LinkedBank;
+using WalletSystem.Services.Wallet;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -49,6 +50,8 @@ builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<WalletContex
 
 builder.Services.AddScoped<ILinkedBankAccountService, LinkedBankAccountService>();
 builder.Services.AddScoped<ILinkedBankAccountRepository, LinkedBankAccountRepository>();
+builder.Services.AddScoped<IWalletRepository, WalletRepository>();
+builder.Services.AddScoped<IWalletService, WalletService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
