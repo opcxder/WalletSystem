@@ -51,8 +51,8 @@ namespace SimulatedBank.Data
                       .HasColumnType("decimal(18,2)")
                       .IsRequired();
 
-                entity.Property(e => e.AccountType)
-                      .HasConversion<int>();
+                entity.Property(e => e.AccountType).HasConversion<string>().HasMaxLength(30);
+                entity.Property(b => b.RowVersion).IsRowVersion();
 
 
                 entity.Property(e => e.IsActive)
@@ -61,7 +61,13 @@ namespace SimulatedBank.Data
                 entity.Property(e => e.CreatedAt)
                       .HasDefaultValueSql("getutcdate()");
 
-                
+
+                entity.HasIndex(e => e.ExternalBankAccountId)
+                      .IsUnique()
+                      .HasFilter(
+                       "[ExternalBankAccountId] IS NOT NULL AND " +
+                      "[ExternalBankAccountId] != '00000000-0000-0000-0000-000000000000'"
+                 );
 
                 entity.HasMany(e => e.Transactions)
                       .WithOne()
@@ -78,9 +84,11 @@ namespace SimulatedBank.Data
                       .HasColumnType("decimal(18,2)")
                       .IsRequired();
 
-                entity.Property(e => e.Type).HasConversion<int>();
+                entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(30);
+                entity.Property(e=>e.Status).HasConversion<string>().HasMaxLength(30);
 
-
+                entity.HasIndex(t => new { t.ExternalReferenceId, t.Type })
+                      .IsUnique().HasFilter("[ExternalReferenceId] != '00000000-0000-0000-0000-000000000000'");
 
                 entity.Property(e => e.Description)
                       .HasMaxLength(250);

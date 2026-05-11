@@ -61,18 +61,18 @@ namespace SimulatedBank.Entities
         }
 
         // Business Logic Methods
-        public Transaction Credit(decimal amount, string description)
+        public Transaction Credit(decimal amount, string description, Guid externalReferenceId)
         {
             ValidateAmount(amount);
 
             Balance += amount;
 
-            var transaction = Transaction.CreateCredit(BankAccountId, amount, description);
+            var transaction = Transaction.CreateCredit(BankAccountId, amount, description, externalReferenceId);
             Transactions.Add(transaction);
             return transaction;
         }
 
-        public Transaction Debit(decimal amount, string description)
+        public Transaction Debit(decimal amount, string description, Guid externalReferenceId)
         {
             ValidateAmount(amount);
 
@@ -81,7 +81,7 @@ namespace SimulatedBank.Entities
 
             Balance -= amount;
 
-            var transaction = Transaction.CreateDebit(BankAccountId, amount, description);
+            var transaction = Transaction.CreateDebit(BankAccountId, amount, description, externalReferenceId);
             Transactions.Add(transaction);
             return transaction;
         }

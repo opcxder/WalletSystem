@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SimulatedBank.Data;
 using SimulatedBank.Dtos;
 using SimulatedBank.Entities;
+using SimulatedBank.Enums;
 using System.Runtime.Intrinsics.Arm;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
@@ -21,7 +22,7 @@ namespace SimulatedBank.Services
             _logger = logger;
         }
 
-        public async Task<VerifyAccountResponse> VerifyAccountHolder(VerifyAccount verifyAccount,CancellationToken ct)
+        public async Task<VerifyAccountResponse> VerifyAccountHolder(VerifyAccount verifyAccount, CancellationToken ct)
         {
             if (verifyAccount == null ||
                 string.IsNullOrWhiteSpace(verifyAccount.AccountNumber) ||
@@ -186,7 +187,7 @@ namespace SimulatedBank.Services
                 };
             }
         }
-        public async Task<CheckBalanceReponse> CheckBalance(Guid externalRefernceId , CancellationToken ct)
+        public async Task<CheckBalanceReponse> CheckBalance(Guid externalRefernceId, CancellationToken ct)
         {
 
             if (externalRefernceId != Guid.Empty)
@@ -224,118 +225,257 @@ namespace SimulatedBank.Services
         }
 
 
-        public async Task<OperationReponse> DebitAmount(Guid ExternalReferenceId, decimal amount)
+        public async Task<OperationResponse> DebitAmount(Guid externalBankAccountId, decimal amount, Guid externalReferenceId, CancellationToken ct = default)
         {
-            if (Guid.Empty == ExternalReferenceId)
+            if (externalBankAccountId == Guid.Empty || externalReferenceId == Guid.Empty)
             {
-                return new OperationReponse
+                return new OperationResponse
                 {
-                    success = false,
-                    message = "Empty Request"
+                    Success = false,
+                    Message = "Invalid request",
+                    ErrorCode = BankErrorCode.InvalidRequest,
+                    ProcessedAt = DateTime.UtcNow
                 };
             }
 
-            var account = await _bankContext.BankAccounts.FirstOrDefaultAsync(x => x.ExternalBankAccountId == ExternalReferenceId);
+            // Idempotency check
+            var existing = await _bankContext.Transactions
+                   .FirstOrDefaultAsync(t => t.ExternalReferenceId == externalReferenceId && t.Type == TransactionType.Debit, ct);
+
+            if (existing != null)
+            {
+                return new OperationResponse
+                {
+                    Success = existing.Status == BankTransactionStatus.Success,
+                    TransactionId = existing.TransactionId,
+                    ExternalReferenceId = existing.ExternalReferenceId,
+                    ProcessedAt = existing.CompletedAt,
+                    ErrorCode = existing.ErrorCode,
+                    IsIdempotentReplay = true
+                };
+            }
+
+            var account = await _bankContext.BankAccounts
+                .FirstOrDefaultAsync(x => x.ExternalBankAccountId == externalBankAccountId);
 
             if (account == null)
             {
-                return new OperationReponse
+                return new OperationResponse
                 {
-                    success = false,
-                    message = "Account not found"
+                    Success = false,
+                    Message = "Account not found",
+                    ErrorCode = BankErrorCode.AccountNotFound,
+                    ProcessedAt = DateTime.UtcNow
                 };
             }
 
             if (!account.IsActive)
             {
-                return new OperationReponse
+                return new OperationResponse
                 {
-                    success = false,
-                    message = "Account not active"
+                    Success = false,
+                    Message = "Account not active",
+                    ErrorCode = BankErrorCode.AccountInActive,
+                    ProcessedAt = DateTime.UtcNow
                 };
             }
-
-            var transaction = account.Debit(amount, "Wallet request for money");
-
 
             try
             {
-                await _bankContext.SaveChangesAsync();
+                var transaction = account.Debit(amount, "Wallet debit request", externalReferenceId);
+
+                transaction.MarkSuccess();
+
+
+                await _bankContext.SaveChangesAsync(ct);
+
+                return new OperationResponse
+                {
+                    Success = true,
+                    TransactionId = transaction.TransactionId,
+                    ExternalReferenceId = externalReferenceId,
+                    ProcessedAt = transaction.CompletedAt,
+                    ErrorCode = BankErrorCode.None,
+                    IsIdempotentReplay = false
+                };
             }
             catch (DbUpdateConcurrencyException)
             {
-                return new OperationReponse
+                return new OperationResponse
                 {
-                    success = false,
-                    message = "Transaction failed due to concurrent update. Please retry."
+                    Success = false,
+                    Message = "Concurrent request conflict. Please retry.",
+                    ErrorCode = BankErrorCode.ConcurrencyConflict,
+                    ProcessedAt = DateTime.UtcNow
                 };
             }
-
-            return new OperationReponse
+            catch (InvalidOperationException ex)
             {
-                success = true,
-                message = "Operation done",
-                TransactionId = transaction.TransactionId
-            };
-
+                return new OperationResponse
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    ErrorCode = BankErrorCode.InsufficientFunds,
+                    ProcessedAt = DateTime.UtcNow
+                };
+            }
+            catch (DbUpdateException)
+            {
+                return new OperationResponse
+                {
+                    Success = false,
+                    Message = "Duplicate or conflicting request",
+                    ErrorCode = BankErrorCode.DuplicateRequest,
+                    ProcessedAt = DateTime.UtcNow
+                };
+            }
+            catch (Exception)
+            {
+                return new OperationResponse
+                {
+                    Success = false,
+                    Message = "Internal server error",
+                    ErrorCode = BankErrorCode.InternalError,
+                    ProcessedAt = DateTime.UtcNow
+                };
+            }
         }
 
-
-
-        public async Task<OperationReponse> CreditAmount(Guid ExternalReferenceId, decimal amount)
+        public async Task<OperationResponse> CreditAmount(Guid externalBankAccountId, decimal amount, Guid externalReferenceId, CancellationToken ct = default)
         {
-            if (Guid.Empty == ExternalReferenceId)
+            if (externalBankAccountId == Guid.Empty || externalReferenceId == Guid.Empty)
             {
-                return new OperationReponse
+                return new OperationResponse
                 {
-                    success = false,
-                    message = "Empty Request"
+                    Success = false,
+                    Message = "Invalid request",
+                    ErrorCode = BankErrorCode.InvalidRequest,
+                    ProcessedAt = DateTime.UtcNow
                 };
             }
 
-            var account = await _bankContext.BankAccounts.FirstOrDefaultAsync(x => x.ExternalBankAccountId == ExternalReferenceId);
+            // Idempotency check
+            var existing = await _bankContext.Transactions
+                   .FirstOrDefaultAsync(t => t.ExternalReferenceId == externalReferenceId && t.Type == TransactionType.Credit, ct);
+
+
+            var account = await _bankContext.BankAccounts
+            .FirstOrDefaultAsync(x => x.ExternalBankAccountId == externalBankAccountId,ct);
 
             if (account == null)
             {
-                return new OperationReponse
+                return new OperationResponse
                 {
-                    success = false,
-                    message = "Account not found"
+                    Success = false,
+                    Message = "Account not found",
+                    ErrorCode = BankErrorCode.AccountNotFound,
+                    ProcessedAt = DateTime.UtcNow
                 };
             }
 
             if (!account.IsActive)
             {
-                return new OperationReponse
+                return new OperationResponse
                 {
-                    success = false,
-                    message = "Account not active"
+                    Success = false,
+                    Message = "Account not active",
+                    ErrorCode = BankErrorCode.AccountInActive,
+                    ProcessedAt = DateTime.UtcNow
                 };
             }
 
-            var transaction = account.Credit(amount, "Wallet request for money");
 
+            if (existing != null)
+            {
+                if (existing.BankAccountId != account.BankAccountId ||
+                    existing.Amount != amount)
+                {
+                    return new OperationResponse
+                    {
+                        Success = false,
+                        Message = "Idempotency key reused with different request data",
+                        ErrorCode = BankErrorCode.DuplicateRequest,
+                        TransactionId = existing.TransactionId,
+                        ExternalReferenceId = existing.ExternalReferenceId,
+                        IsIdempotentReplay = true,
+                        ProcessedAt = existing.CompletedAt
+                    };
+                }
+
+                return new OperationResponse
+                {
+                    Success = existing.Status == BankTransactionStatus.Success,
+                    TransactionId = existing.TransactionId,
+                    ExternalReferenceId = existing.ExternalReferenceId,
+                    ProcessedAt = existing.CompletedAt,
+                    ErrorCode = existing.ErrorCode,
+                    IsIdempotentReplay = true
+                };
+            }
+
+        
 
             try
             {
-                await _bankContext.SaveChangesAsync();
+                var transaction = account.Credit(amount, "Wallet credit request", externalReferenceId);
+
+                transaction.MarkSuccess();
+
+
+                await _bankContext.SaveChangesAsync(ct);
+
+                return new OperationResponse
+                {
+                    Success = true,
+                    TransactionId = transaction.TransactionId,
+                    ExternalReferenceId = externalReferenceId,
+                    ProcessedAt = transaction.CompletedAt,
+                    ErrorCode = BankErrorCode.None,
+                    IsIdempotentReplay = false
+                };
             }
             catch (DbUpdateConcurrencyException)
             {
-                return new OperationReponse
+                return new OperationResponse
                 {
-                    success = false,
-                    message = "Transaction failed due to concurrent update. Please retry."
+                    Success = false,
+                    Message = "Concurrent request conflict. Please retry.",
+                    ErrorCode = BankErrorCode.ConcurrencyConflict,
+                    ProcessedAt = DateTime.UtcNow
                 };
             }
-
-            return new OperationReponse
+            catch (InvalidOperationException ex)
             {
-                success = true,
-                message = "Operation done",
-                TransactionId = transaction.TransactionId
-            };
+                return new OperationResponse
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    ErrorCode = BankErrorCode.InvalidAmount,
+                    ProcessedAt = DateTime.UtcNow
+                };
+            }
+            catch (DbUpdateException)
+            {
+                return new OperationResponse
+                {
+                    Success = false,
+                    Message = "Duplicate or conflicting request",
+                    ErrorCode = BankErrorCode.DuplicateRequest,
+                    ProcessedAt = DateTime.UtcNow
+                };
+            }
+            catch (Exception)
+            {
+                return new OperationResponse
+                {
+                    Success = false,
+                    Message = "Internal server error",
+                    ErrorCode = BankErrorCode.InternalError,
+                    ProcessedAt = DateTime.UtcNow
+                };
+            }
         }
+
 
 
         //public async Task<bool> LinkAccount(BankAccount account, CancellationToken ct)

@@ -120,26 +120,26 @@ namespace SimulatedBank.Controllers
         }
 
         [HttpPost("debit")]
-        public async Task<IActionResult> DebitBalance([FromBody] OperationRequest debitRequest )
+        public async Task<IActionResult> DebitBalance([FromBody] OperationRequest debitRequest,CancellationToken ct = default )
         {
             if(!ModelState.IsValid)
             {
-                var response = new OperationReponse
+                var response = new OperationResponse
                 {
-                    success = false,
-                    message  = "Invalid Request",
+                    Success = false,
+                    Message  = "Invalid Request",
                 };
 
                return BadRequest(response);
             }
 
-            var result = await _bankService.DebitAmount(debitRequest.ExternalBankAccountId, debitRequest.amount);
-            if (result == null || !result.success)
+            var result = await _bankService.DebitAmount(debitRequest.ExternalBankAccountId, debitRequest.Amount,debitRequest.ExternalReferenceId,ct);
+            if (result == null || !result.Success)
             {
-                return BadRequest(new OperationReponse
+                return BadRequest(new OperationResponse
                 {
-                    success = false,
-                    message = result?.message ?? "Unable to perform the operation"
+                    Success = false,
+                    Message = result?.Message ?? "Unable to perform the operation"
                 });
             }
             return Ok(result);
@@ -148,26 +148,28 @@ namespace SimulatedBank.Controllers
 
 
         [HttpPost("credit")]
-        public async Task<IActionResult> CreditBalance([FromBody] OperationRequest debitRequest)
+        public async Task<IActionResult> CreditBalance([FromBody] OperationRequest creditRequest,CancellationToken ct = default)
         {
             if (!ModelState.IsValid)
             {
-                var response = new OperationReponse
+                var response = new OperationResponse
                 {
-                    success = false,
-                    message = "Invalid Request",
+                    Success = false,
+                    Message = "Invalid Request",
                 };
 
                 return BadRequest(response);
             }
 
-            var result = await _bankService.CreditAmount(debitRequest.ExternalBankAccountId, debitRequest.amount);
-            if (result == null || !result.success)
+            
+
+            var result = await _bankService.CreditAmount(creditRequest.ExternalBankAccountId, creditRequest.Amount, creditRequest.ExternalReferenceId,ct);
+            if (result == null || !result.Success)
             {
-                return BadRequest(new OperationReponse
+                return BadRequest(new OperationResponse
                 {
-                    success = false,
-                    message = result?.message ?? "Unable to perform the operation"
+                    Success = false,
+                    Message = result?.Message ?? "Unable to perform the operation"
                 });
             }
             return Ok(result);
