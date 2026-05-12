@@ -150,7 +150,7 @@ namespace WalletSystem.Infrastructure.Data
                 entity.ToTable(w =>
                     w.HasCheckConstraint(
                         "CK_Wallet_Status",
-                        "[Status] IN ( 'Active','Suspended','Blocked','Deactivated' )"
+                        "[Status] IN ( 'Active','Suspended','Blocked','Deactivated', 'PendingVerification','Closed' )"
                     )
                 );
             });
@@ -189,12 +189,19 @@ namespace WalletSystem.Infrastructure.Data
                 entity.Property(t => t.CreatedAt)
                       .HasDefaultValueSql("getutcdate()");
 
-                entity.HasIndex(t => t.IdempotencyKey).IsUnique();
+                
                 entity.HasIndex(t => t.SourceWalletId);
                 entity.HasIndex(t => t.DestinationWalletId);
                 entity.HasIndex(t => t.CreatedAt);
                 entity.HasIndex(t => t.Status);
                 entity.HasIndex(t => t.ReferenceId).IsUnique();
+
+                entity.HasIndex(t => new
+                {
+                    t.DestinationWalletId, t.SourceBankAccountId,  t.Type,  t.IdempotencyKey
+                }).IsUnique().HasFilter("[Type] = 'AddMoney' AND [DestinationWalletId] IS NOT NULL AND [SourceBankAccountId] IS NOT NULL");
+
+                entity.HasIndex(t=> t.BankTransactionId).IsUnique().HasFilter("[BankTransactionId] IS NOT NULL");
 
                 entity.Property(t => t.Status)
                       .HasConversion<string>()
@@ -249,7 +256,7 @@ namespace WalletSystem.Infrastructure.Data
                   );
                     t.HasCheckConstraint(
                        "CK_Transaction_Status",
-                       "[Status] IN ( 'Initiated','Processing','Success','Failed' )"
+                       "[Status] IN ( 'Initiated','BankDebitSuccess','Success','Failed', 'WalletCreditSuccess','CompensationPending','CompensationRetrying', 'Compensated','ManualReviewRequired' )"
                    );
                 });
             });

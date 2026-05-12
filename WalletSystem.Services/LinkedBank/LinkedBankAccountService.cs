@@ -61,9 +61,9 @@ namespace WalletSystem.Services.LinkedBank
 
             return ServiceResult<CheckBalanceResponse>.Ok(new CheckBalanceResponse
             {
-              
+                 Success = true,
                 Balance = getBalance.Balance,
-              
+                Message  = getBalance.Message ?? "Balance Fetched Successfully"           
             });
         }
 
@@ -104,7 +104,7 @@ namespace WalletSystem.Services.LinkedBank
             });
         }
 
-        public async Task<ServiceResult<LinkedBankReponse>> VerifyAndLinkBankAccountAsync(
+        public async Task<ServiceResult<LinkedBankResponse>> VerifyAndLinkBankAccountAsync(
                Guid userId,
                VerifyBankRequest request
             , CancellationToken ct = default)
@@ -112,7 +112,7 @@ namespace WalletSystem.Services.LinkedBank
             _logger.LogInformation("Inside VerifyAndLinkBankAccountAsync");
             if (userId == Guid.Empty || request == null)
             {
-                return ServiceResult<LinkedBankReponse>.Fail("Empty Input");
+                return ServiceResult<LinkedBankResponse>.Fail("Empty Input");
             }
 
             if (string.IsNullOrWhiteSpace(request.AccountHolderName) ||
@@ -120,18 +120,18 @@ namespace WalletSystem.Services.LinkedBank
                 string.IsNullOrWhiteSpace(request.AccountNumber)
                 )
             {
-                return ServiceResult<LinkedBankReponse>.Fail("Empty Input");
+                return ServiceResult<LinkedBankResponse>.Fail("Empty Input");
             }
 
             if (request.AccountType != Core.Enums.AccountType.Savings)
             {
-                return ServiceResult<LinkedBankReponse>.Fail("Wallet supports Savings account only");
+                return ServiceResult<LinkedBankResponse>.Fail("Wallet supports Savings account only");
             }
 
             var checkExists = await _linkedBankAccountRepository.ExistsByUserIdAsync(userId, ct);
             if (checkExists)
             {
-                return ServiceResult<LinkedBankReponse>.Fail("Bank account already linked");
+                return ServiceResult<LinkedBankResponse>.Fail("Bank account already linked");
             }
 
             _logger.LogInformation("Calling bank verify API");
@@ -143,15 +143,15 @@ namespace WalletSystem.Services.LinkedBank
                 _logger.LogWarning("Bank verification failed for user {UserId}: {Message}",
                     userId, verifyApiResponse.Message);
 
-                return ServiceResult<LinkedBankReponse>.Fail(
+                return ServiceResult<LinkedBankResponse>.Fail(
                     verifyApiResponse.Message ?? "Verification failed");
             }
-            _logger.LogInformation(verifyApiResponse.VerificationToken);
+    
             _logger.LogInformation(verifyApiResponse.Message);
 
             if (string.IsNullOrWhiteSpace(verifyApiResponse.VerificationToken))
             {
-                return ServiceResult<LinkedBankReponse>.Fail("Verification token missing");
+                return ServiceResult<LinkedBankResponse>.Fail("Verification token missing");
             }
 
             if (string.IsNullOrWhiteSpace(verifyApiResponse.IFSCCode) ||
@@ -160,7 +160,7 @@ namespace WalletSystem.Services.LinkedBank
                string.IsNullOrWhiteSpace(verifyApiResponse.AccountHolderName))
             {
                 _logger.LogError("Invalid verification response: missing required fields");
-                return ServiceResult<LinkedBankReponse>.Fail("Invalid bank verification response");
+                return ServiceResult<LinkedBankResponse>.Fail("Invalid bank verification response");
             }
 
 
@@ -175,7 +175,7 @@ namespace WalletSystem.Services.LinkedBank
                 _logger.LogWarning("Bank linking failed for user {UserId}: {Message}",
                     userId, linkApiResponse.Message);
 
-                return ServiceResult<LinkedBankReponse>.Fail(
+                return ServiceResult<LinkedBankResponse>.Fail(
                     linkApiResponse.Message ?? "Linking failed");
             }
 
@@ -196,8 +196,7 @@ namespace WalletSystem.Services.LinkedBank
             };
 
 
-            var json = JsonSerializer.Serialize(linkedBankAccount);
-            _logger.LogInformation("Request data: {Request}", json);
+         
 
             await _linkedBankAccountRepository.AddAsync(linkedBankAccount, ct);
 
@@ -207,13 +206,13 @@ namespace WalletSystem.Services.LinkedBank
 
                 _logger.LogInformation("Bank linked successfully for user {UserId}", userId);
 
-                return ServiceResult<LinkedBankReponse>.Ok(new LinkedBankReponse
+                return ServiceResult<LinkedBankResponse>.Ok(new LinkedBankResponse
                 {
                     Success = true,
                     Message = "Bank linked successfully",
 
                     ExternalReferenceId = linkApiResponse.ExternalReferenceId.Value,
-                   
+                     IFSCCode = verifyApiResponse.IFSCCode,
                     MaskedAccountNumber = verifyApiResponse.MaskedAccountNumber,
                     AccountHolderName = verifyApiResponse.AccountHolderName,
                     AccountType = verifyApiResponse.AccountType,
@@ -225,7 +224,7 @@ namespace WalletSystem.Services.LinkedBank
             {
                 _logger.LogError(ex, "Failed to save linked bank account for user {UserId}", userId);
 
-                return ServiceResult<LinkedBankReponse>.Fail(
+                return ServiceResult<LinkedBankResponse>.Fail(
                     "Unable to save linked bank account");
             }
         }

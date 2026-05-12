@@ -13,5 +13,10 @@ namespace WalletSystem.Core.DTOs.Transactions
         public decimal Amount { get; set; }
         public DateTime CreatedAt { get; set; }
 
+        public bool IsIdempotentReplay { get; set; }
+
+
+        public string? FailureReason { get; set; }
+
     }
 }

@@ -16,7 +16,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
             _logger = logger;
         }
 
-        public async Task<BankOperationResponse> CreditAsync(Guid externalBankAccountId, decimal amount, CancellationToken ct = default)
+        public async Task<BankOperationResponse> CreditAsync(Guid externalBankAccountId, decimal amount, Guid transactionId, CancellationToken ct = default)
         {
             try
             {
@@ -32,19 +32,20 @@ namespace WalletSystem.Infrastructure.ExternalServices
                 var request = new BankOperationRequest
                 {
                     ExternalBankAccountId = externalBankAccountId,
-                    Amount = amount
+                    Amount = amount,
+                    ExternalReferenceId = transactionId,
                 };
 
                 var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/credit", request , ct);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    var error = await response.Content.ReadAsStringAsync();
+                    var bankError = await response.Content.ReadFromJsonAsync<BankOperationResponse>(cancellationToken: ct);
 
-                    return new BankOperationResponse
+                    return bankError ?? new BankOperationResponse
                     {
                         Success = false,
-                        Message = string.IsNullOrWhiteSpace(error) ? "Credit failed" : error
+                        Message = "Credit failed"
                     };
                 }
 
@@ -53,7 +54,9 @@ namespace WalletSystem.Infrastructure.ExternalServices
                 return result ?? new BankOperationResponse
                 {
                     Success = false,
-                    Message = "Empty response"
+                    Message = "Empty response",
+                  
+
                 };
             }
             catch (HttpRequestException ex)
@@ -78,7 +81,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
             }
         }
 
-        public async Task<BankOperationResponse> DebitAsync(Guid externalBankAccountId, decimal amount, CancellationToken ct = default)
+        public async Task<BankOperationResponse> DebitAsync(Guid externalBankAccountId, decimal amount, Guid transactionId, CancellationToken ct = default)
         {
             try
             {
@@ -94,19 +97,20 @@ namespace WalletSystem.Infrastructure.ExternalServices
                 var request = new BankOperationRequest
                 {
                     ExternalBankAccountId = externalBankAccountId,
-                    Amount = amount
+                    Amount = amount,
+                    ExternalReferenceId = transactionId,
                 };
 
                 var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/debit", request,ct);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    var error = await response.Content.ReadAsStringAsync();
+                    var bankError = await response.Content.ReadFromJsonAsync<BankOperationResponse>(cancellationToken: ct);
 
-                    return new BankOperationResponse
+                    return bankError ?? new BankOperationResponse
                     {
                         Success = false,
-                        Message = string.IsNullOrWhiteSpace(error) ? "Debit failed" : error
+                        Message = "Debit failed"
                     };
                 }
 

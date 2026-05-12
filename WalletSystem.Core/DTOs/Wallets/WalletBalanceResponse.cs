@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 using WalletSystem.Core.Enums;
 
-namespace WalletSystem.Core.DTOs.Wallet
+namespace WalletSystem.Core.DTOs.Wallets
 {
     public class WalletBalanceResponse
     {

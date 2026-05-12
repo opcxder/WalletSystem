@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace WalletSystem.Core.DTOs.Wallet
+namespace WalletSystem.Core.DTOs.Wallets
 {
     public class CreateWalletRequest
     {

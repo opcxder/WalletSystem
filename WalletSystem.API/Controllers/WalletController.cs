@@ -2,9 +2,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WalletSystem.API.Models;
-using WalletSystem.Core.DTOs.Bank;
-using WalletSystem.Core.DTOs.Wallet;
-using WalletSystem.Core.Entities;
+
+using WalletSystem.Core.DTOs.Wallets;
+
 using WalletSystem.Core.Interfaces.Services;
 
 namespace WalletSystem.API.Controllers

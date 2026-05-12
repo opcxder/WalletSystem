@@ -20,12 +20,14 @@ namespace WalletSystem.Services.Auth
         private readonly IEmailService _emailService;
         private readonly IPasswordService _passwordService;
         private readonly IJwtService _jwtService;
+        private readonly IUserKycRepository _userKycRepository;
         private readonly ILogger<AuthService> _logger;
         public AuthService(IUserRepository userRepository,
         IUserCredentialsRepository credentialsRepository,
         IUnitOfWork unitOfWork,
         IEmailService emailService,
         IPasswordService passwordService,
+        IUserKycRepository userKycRepository,
         IJwtService jwtService,
         ILogger<AuthService> logger)
         {
@@ -34,6 +36,7 @@ namespace WalletSystem.Services.Auth
             _unitOfWork = unitOfWork;
             _emailService = emailService;
             _passwordService = passwordService;
+            _userKycRepository = userKycRepository;
             _jwtService = jwtService;
             _logger = logger;
         }
@@ -182,8 +185,19 @@ namespace WalletSystem.Services.Auth
                 UpdatedAt = DateTime.UtcNow
             };
 
+            var userKyc = new UserKyc
+            {
+                KycId = Guid.NewGuid(),
+                UserId  = user.UserId,
+                GovernmentIdType = request.GovernmentIdType,
+                GovernmentIdNumber = request.GovernmentIdNumber,
+                Status = KycStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+            };
+
             await _userRepository.AddAsync(user);
             await _credentialsRepository.AddAsync(credentials);
+            await _userKycRepository.AddAsync(userKyc);
 
             try
             {
@@ -265,7 +279,8 @@ namespace WalletSystem.Services.Auth
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error while verifying the user mail");
-                return ServiceResult.Fail(ex.Message);
+                return ServiceResult.Fail("Email verification failed");
+
             }
 
 
@@ -281,7 +296,7 @@ namespace WalletSystem.Services.Auth
                 return ServiceResult.Fail("Email is empty");
             }
             email = email.Trim().ToLower();
-            User? user = await _userRepository.GetByEmailAsync(email);
+            User? user = await _userRepository.GetByEmailAsyncForUpdate(email);
             if (user == null)
             {
                 return ServiceResult.Fail("User not found");

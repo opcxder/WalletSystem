@@ -2,6 +2,6 @@
 {
     public class CheckBalanceRequest
     {
-        public Guid ExternalReferenceId { get; set; }
+        public Guid ExternalBankAccountId { get; set; }
     }
 }

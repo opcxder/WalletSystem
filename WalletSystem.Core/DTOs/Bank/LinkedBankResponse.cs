@@ -4,7 +4,7 @@ using WalletSystem.Core.Enums;
 
 namespace WalletSystem.Core.DTOs.Bank
 {
-    public class LinkedBankReponse
+    public class LinkedBankResponse
     {
         public bool Success { get; set; }
         public string? Message { get; set; }
@@ -16,6 +16,9 @@ namespace WalletSystem.Core.DTOs.Bank
 
         public AccountType? AccountType { get; set; }
         public string? BankName { get; set; }
+
+        public string? IFSCCode { get; set; }  
+
 
     }
 }

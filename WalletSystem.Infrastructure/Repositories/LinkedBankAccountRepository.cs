@@ -41,5 +41,19 @@ namespace WalletSystem.Infrastructure.Repositories
             }
             return await _walletContext.LinkedBankAccounts.AsNoTracking().FirstOrDefaultAsync(l => l.UserId == userId && !l.IsDeleted, ct);
         }
+
+
+ 
+        public async Task<LinkedBankAccount?> GetByUserIdForUpdateAsync(Guid userId, CancellationToken ct = default)
+        {
+            if (userId == Guid.Empty)
+            {
+                throw new ArgumentException("UserId cannot be empty", nameof(userId));
+            }
+          
+            return await _walletContext.LinkedBankAccounts
+                .FirstOrDefaultAsync(l => l.UserId == userId && !l.IsDeleted, ct);
+        }
+
     }
 }

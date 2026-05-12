@@ -12,5 +12,6 @@ namespace WalletSystem.Core.Interfaces.Repositories
 
         Task<bool> ExistsAsync(string vpaAddress, CancellationToken ct = default);
 
+        Task<Vpa?> GetByWalletIdAsync(Guid walletId , CancellationToken ct = default);
     }
 }

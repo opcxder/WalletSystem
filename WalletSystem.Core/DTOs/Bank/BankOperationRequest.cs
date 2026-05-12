@@ -4,5 +4,8 @@
     {
         public Guid ExternalBankAccountId { get; set; }
         public decimal Amount { get; set; }
+
+        public Guid ExternalReferenceId { get; set; }
+
     }
 }

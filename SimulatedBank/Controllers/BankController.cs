@@ -33,7 +33,18 @@ namespace SimulatedBank.Controllers
                 return BadRequest(response);
             }
 
-            try
+            if(verifyAccount == null)
+            {
+                var response = new VerifyAccountResponse
+                {
+                    Success = false,
+                    Message = "Empty Request"
+                };
+                return BadRequest(response);
+            }
+
+
+                try
             {
                 var result = await _bankService.VerifyAccountHolder(verifyAccount,ct);
                 return Ok(result);
@@ -96,7 +107,7 @@ namespace SimulatedBank.Controllers
         [HttpGet("check-balance")]
         public async Task<IActionResult> CheckBalance([FromQuery] CheckBalanceRequest request, CancellationToken ct)
         {
-            if (request.ExternalReferenceId != Guid.Empty)
+            if (request.ExternalBankAccountId == Guid.Empty)
             {
                 return BadRequest(new CheckBalanceReponse
                 {
@@ -105,7 +116,7 @@ namespace SimulatedBank.Controllers
                 });
             }
 
-            var result = await _bankService.CheckBalance(request.ExternalReferenceId, ct);
+            var result = await _bankService.CheckBalance(request.ExternalBankAccountId, ct);
 
             if (result == null || !result.Success)
             {
@@ -134,11 +145,28 @@ namespace SimulatedBank.Controllers
             }
 
             var result = await _bankService.DebitAmount(debitRequest.ExternalBankAccountId, debitRequest.Amount,debitRequest.ExternalReferenceId,ct);
-            if (result == null || !result.Success)
+            
+            
+            if(result == null)
+            {
+                return BadRequest(new OperationResponse
+                {
+                     Success  = false,
+                     Message = "Unable to perform the operation"
+                });
+            };
+
+            
+            if ( !result.Success)
             {
                 return BadRequest(new OperationResponse
                 {
                     Success = false,
+                    ProcessedAt = result.ProcessedAt,
+                    TransactionId = result.TransactionId,
+                    IsIdempotentReplay = result.IsIdempotentReplay,
+                    ExternalReferenceId = result.ExternalReferenceId,
+                    ErrorCode = result.ErrorCode,
                     Message = result?.Message ?? "Unable to perform the operation"
                 });
             }
@@ -164,11 +192,27 @@ namespace SimulatedBank.Controllers
             
 
             var result = await _bankService.CreditAmount(creditRequest.ExternalBankAccountId, creditRequest.Amount, creditRequest.ExternalReferenceId,ct);
-            if (result == null || !result.Success)
+            if (result == null)
             {
                 return BadRequest(new OperationResponse
                 {
                     Success = false,
+                    Message = "Unable to perform the operation"
+                });
+            }
+            ;
+
+
+            if (!result.Success)
+            {
+                return BadRequest(new OperationResponse
+                {
+                    Success = false,
+                    ProcessedAt = result.ProcessedAt,
+                    TransactionId = result.TransactionId,
+                    IsIdempotentReplay = result.IsIdempotentReplay,
+                    ErrorCode = result.ErrorCode,
+                    ExternalReferenceId = result.ExternalReferenceId,
                     Message = result?.Message ?? "Unable to perform the operation"
                 });
             }

@@ -1,7 +1,7 @@
 ﻿
 using WalletSystem.Core.common;
 
-using WalletSystem.Core.DTOs.Wallet;
+using WalletSystem.Core.DTOs.Wallets;
 
 
 namespace WalletSystem.Core.Interfaces.Services

@@ -106,5 +106,4 @@ coverage/
 
 **/appsettings.json
 appsettings.json
-/WalletSystem.Core/Interfaces/Services/ITransactionService.cs
-/WalletSystem.Core/Interfaces/Repositories/ITransactionRepository.cs
+

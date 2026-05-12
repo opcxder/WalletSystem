@@ -13,6 +13,7 @@ using WalletSystem.Infrastructure.Repositories;
 using WalletSystem.Services.Auth;
 using WalletSystem.Services.Background;
 using WalletSystem.Services.LinkedBank;
+using WalletSystem.Services.Transactions;
 using WalletSystem.Services.Wallet;
 
 
@@ -47,11 +48,17 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
 builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<WalletContext>());
+builder.Services.AddHostedService<CompensationRecoveryService>();
 
+
+builder.Services.AddScoped<IUserKycRepository, UserKycRepository>();
 builder.Services.AddScoped<ILinkedBankAccountService, LinkedBankAccountService>();
 builder.Services.AddScoped<ILinkedBankAccountRepository, LinkedBankAccountRepository>();
 builder.Services.AddScoped<IWalletRepository, WalletRepository>();
 builder.Services.AddScoped<IWalletService, WalletService>();
+builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+builder.Services.AddScoped<ITransactionService, TransactionService>();
+
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

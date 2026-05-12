@@ -10,5 +10,7 @@ namespace WalletSystem.Core.Interfaces.Repositories
         Task<LinkedBankAccount?> GetByUserIdAsync(Guid userId, CancellationToken ct = default);
 
         Task<bool> ExistsByUserIdAsync(Guid userId, CancellationToken ct = default);
+
+        Task<LinkedBankAccount?> GetByUserIdForUpdateAsync(Guid userId, CancellationToken ct = default);
     }
 }

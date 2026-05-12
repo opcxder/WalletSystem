@@ -7,7 +7,7 @@ namespace WalletSystem.Core.Interfaces.Services
     public interface ILinkedBankAccountService
     {
 
-        Task<ServiceResult<LinkedBankReponse>> VerifyAndLinkBankAccountAsync(Guid userId, VerifyBankRequest request, CancellationToken ct = default);
+        Task<ServiceResult<LinkedBankResponse>> VerifyAndLinkBankAccountAsync(Guid userId, VerifyBankRequest request, CancellationToken ct = default);
 
         Task<ServiceResult<LinkedBankAccountResponse>> GetLinkedAccountAsync(Guid userId, CancellationToken ct = default);
 

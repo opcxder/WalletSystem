@@ -40,7 +40,7 @@ namespace SimulatedBank.Migrations
 
                     b.HasKey("BankId");
 
-                    b.ToTable("Banks");
+                    b.ToTable("Banks", (string)null);
 
                     b.HasData(
                         new
@@ -112,7 +112,7 @@ namespace SimulatedBank.Migrations
                         .IsUnique()
                         .HasFilter("[ExternalBankAccountId] IS NOT NULL AND [ExternalBankAccountId] != '00000000-0000-0000-0000-000000000000'");
 
-                    b.ToTable("BankAccounts");
+                    b.ToTable("BankAccounts", (string)null);
 
                     b.HasData(
                         new
@@ -233,7 +233,7 @@ namespace SimulatedBank.Migrations
                         .IsUnique()
                         .HasFilter("[ExternalReferenceId] != '00000000-0000-0000-0000-000000000000'");
 
-                    b.ToTable("Transactions");
+                    b.ToTable("Transactions", (string)null);
                 });
 
             modelBuilder.Entity("SimulatedBank.Entities.VerificationToken", b =>
@@ -269,7 +269,7 @@ namespace SimulatedBank.Migrations
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
-                    b.ToTable("VerificationTokens");
+                    b.ToTable("VerificationTokens", (string)null);
                 });
 
             modelBuilder.Entity("SimulatedBank.Entities.BankAccount", b =>

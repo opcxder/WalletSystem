@@ -107,6 +107,12 @@ namespace WalletSystem.Infrastructure.Repositories
         }
 
         // TRACKED ENTITY (FOR UPDATE)
+
+        public async Task<User?> GetByEmailAsyncForUpdate(string email, CancellationToken ct = default)
+        {
+            return await _walletContext.Users
+               .FirstOrDefaultAsync(u => u.Email == email, ct);
+        }
         public async Task<User?> GetByIdForUpdateAsync(Guid id, CancellationToken ct = default)
         {
             return await _walletContext.Users

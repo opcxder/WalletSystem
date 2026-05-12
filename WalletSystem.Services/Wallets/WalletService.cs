@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using WalletSystem.Core.common;
 
-using WalletSystem.Core.DTOs.Wallet;
+using WalletSystem.Core.DTOs.Wallets;
 using WalletSystem.Core.Entities;
 using WalletSystem.Core.Enums;
 using WalletSystem.Core.Interfaces.Repositories;
@@ -212,12 +212,19 @@ namespace WalletSystem.Services.Wallet
                 return ServiceResult<WalletResponse>.Fail("Wallet not found");
             }
 
+            var vpa = await _vpaRepository.GetByWalletIdAsync(wallet.WalletId, ct);
+
+
+
+
             return ServiceResult<WalletResponse>.Ok(new WalletResponse
             {
                 WalletId = wallet.WalletId,
                 Balance = wallet.Balance,
                 Status = wallet.Status,
                 CreatedAt = wallet.CreatedAt,
+                VpaAddress = vpa?.VpaAddress ?? "Address not found"
+
             });
         }
 

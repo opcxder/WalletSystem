@@ -34,6 +34,15 @@ namespace WalletSystem.API.Controllers
                 return BadRequest(ApiResponse<object>.Fail(string.Join(", ", errors)));
             }
 
+
+            if (   request == null  )
+            {
+                return BadRequest(ApiResponse<object>.Fail("Empty Input"));
+            }
+
+            
+
+
             var result = await _authService.RegisterAsync(request);
 
 

@@ -190,7 +190,7 @@ namespace SimulatedBank.Services
         public async Task<CheckBalanceReponse> CheckBalance(Guid externalRefernceId, CancellationToken ct)
         {
 
-            if (externalRefernceId != Guid.Empty)
+            if (externalRefernceId == Guid.Empty)
             {
                 return new CheckBalanceReponse
                 {
@@ -242,21 +242,9 @@ namespace SimulatedBank.Services
             var existing = await _bankContext.Transactions
                    .FirstOrDefaultAsync(t => t.ExternalReferenceId == externalReferenceId && t.Type == TransactionType.Debit, ct);
 
-            if (existing != null)
-            {
-                return new OperationResponse
-                {
-                    Success = existing.Status == BankTransactionStatus.Success,
-                    TransactionId = existing.TransactionId,
-                    ExternalReferenceId = existing.ExternalReferenceId,
-                    ProcessedAt = existing.CompletedAt,
-                    ErrorCode = existing.ErrorCode,
-                    IsIdempotentReplay = true
-                };
-            }
 
             var account = await _bankContext.BankAccounts
-                .FirstOrDefaultAsync(x => x.ExternalBankAccountId == externalBankAccountId);
+            .FirstOrDefaultAsync(x => x.ExternalBankAccountId == externalBankAccountId, ct);
 
             if (account == null)
             {
@@ -279,6 +267,39 @@ namespace SimulatedBank.Services
                     ProcessedAt = DateTime.UtcNow
                 };
             }
+
+
+            if (existing != null)
+            {
+                if (existing.BankAccountId != account.BankAccountId ||
+                     existing.Amount != amount)
+                {
+                    return new OperationResponse
+                    {
+                        Success = false,
+                        Message = "Idempotency key reused with different request data",
+                        ErrorCode = BankErrorCode.DuplicateRequest,
+                        TransactionId = existing.TransactionId,
+                        ExternalReferenceId = existing.ExternalReferenceId,
+                        IsIdempotentReplay = true,
+                        ProcessedAt = existing.CompletedAt
+                    };
+                }
+
+                return new OperationResponse
+                {
+                    Success = existing.Status == BankTransactionStatus.Success,
+                    TransactionId = existing.TransactionId,
+                    ExternalReferenceId = existing.ExternalReferenceId,
+                    ProcessedAt = existing.CompletedAt,
+                    ErrorCode = existing.ErrorCode,
+                    IsIdempotentReplay = true
+                };
+            }
+
+           
+
+           
 
             try
             {

@@ -19,6 +19,8 @@ namespace WalletSystem.Core.Interfaces.Repositories
         Task UpdateAsync(User user, CancellationToken ct = default);
 
         Task<User?> GetByIdForUpdateAsync(Guid id, CancellationToken ct = default);
+
+         Task<User?> GetByEmailAsyncForUpdate(string email, CancellationToken ct = default);
         Task<User?> GetByEmailVerificationTokenHashAsync(string tokenHash , CancellationToken ct = default);
 
         Task<bool> ExistsActiveByEmailAsync(string email, CancellationToken ct = default);

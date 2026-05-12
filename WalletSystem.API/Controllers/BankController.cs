@@ -101,7 +101,7 @@ namespace WalletSystem.API.Controllers
             }
 
             var res = result.Result!;
-            return Ok(ApiResponse<LinkedBankReponse>.Ok(res, "Success"));
+            return Ok(ApiResponse<LinkedBankResponse>.Ok(res, "Success"));
 
         }
     }

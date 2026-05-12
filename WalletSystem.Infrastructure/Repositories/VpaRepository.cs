@@ -42,5 +42,12 @@ namespace WalletSystem.Infrastructure.Repositories
             if (id == Guid.Empty) throw new ArgumentException("Invalid id", nameof(id));
             return await _walletContext.Vpas.FirstOrDefaultAsync(x => x.VpaId == id, ct);
         }
+
+        public async Task<Vpa?> GetByWalletIdAsync(Guid walletId, CancellationToken ct = default)
+        {
+            if (walletId == Guid.Empty) throw new ArgumentException("Invalid id", nameof(walletId));
+
+            return await _walletContext.Vpas.FirstOrDefaultAsync(x => x.WalletId == walletId, ct);
+        }
     }
 }

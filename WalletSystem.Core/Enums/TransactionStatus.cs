@@ -1,11 +1,17 @@
 ﻿
 namespace WalletSystem.Core.Enums
 {
-    public  enum TransactionStatus
+    public enum TransactionStatus
     {
         Initiated,
-        Processing,
+        BankDebitSuccess,
+        WalletCreditSuccess,
         Success,
-        Failed
+        Failed,
+        CompensationPending,
+        CompensationRetrying,
+        Compensated,
+        ManualReviewRequired
+
     }
 }
