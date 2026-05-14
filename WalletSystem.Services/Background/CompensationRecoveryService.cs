@@ -70,8 +70,9 @@ namespace WalletSystem.Services.Background
             foreach(var tx in pending)
             {
                 await CompensateSingleAsync(tx, bankService, context, ct);
+                await context.SaveChangesAsync(ct);
             }
-            await context.SaveChangesAsync(ct);
+           
         }
 
 

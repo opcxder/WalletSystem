@@ -1,5 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using WalletSystem.Core.DTOs.Bank;
 using WalletSystem.Core.Interfaces.Services;
 
@@ -10,7 +13,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
         private readonly HttpClient _client;
         private readonly ILogger<BankVerificationService> _logger;
 
-        public BankVerificationService(HttpClient client, ILogger<BankVerificationService> logger )
+        public BankVerificationService(HttpClient client, ILogger<BankVerificationService> logger)
         {
             _client = client;
             _logger = logger;
@@ -36,7 +39,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
                     ExternalReferenceId = transactionId,
                 };
 
-                var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/credit", request , ct);
+                var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/credit", request, ct);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -55,7 +58,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
                 {
                     Success = false,
                     Message = "Empty response",
-                  
+
 
                 };
             }
@@ -83,6 +86,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
 
         public async Task<BankOperationResponse> DebitAsync(Guid externalBankAccountId, decimal amount, Guid transactionId, CancellationToken ct = default)
         {
+
             try
             {
                 if (externalBankAccountId == Guid.Empty || amount <= 0)
@@ -101,7 +105,15 @@ namespace WalletSystem.Infrastructure.ExternalServices
                     ExternalReferenceId = transactionId,
                 };
 
-                var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/debit", request,ct);
+                _logger.LogInformation(
+   "Calling bank debit. Account={AccountId}, Amount={Amount}, Ref={Ref}",
+   externalBankAccountId,
+   amount,
+   transactionId);
+
+                var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/debit", request, ct);
+
+                _logger.LogInformation("Bank debit response status={StatusCode}", response.StatusCode);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -114,7 +126,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
                     };
                 }
 
-                var result = await response.Content.ReadFromJsonAsync<BankOperationResponse>();
+                var result = await response.Content.ReadFromJsonAsync<BankOperationResponse>(cancellationToken: ct);
 
                 return result ?? new BankOperationResponse
                 {
@@ -158,7 +170,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
                 }
 
                 var response = await _client.GetAsync(
-                    $"api/v1/bank/accounts/check-balance?externalBankAccountId={externalBankAccountId}",ct
+                    $"api/v1/bank/accounts/check-balance?externalBankAccountId={externalBankAccountId}", ct
                 );
 
                 if (!response.IsSuccessStatusCode)
@@ -206,7 +218,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(verificationToken) )
+                if (string.IsNullOrWhiteSpace(verificationToken))
                 {
                     return new LinkAccountResult
                     {
@@ -217,7 +229,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
 
                 var request = new { VerificationToken = verificationToken };
 
-                var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/link", request,ct);
+                var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/link", request, ct);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -276,7 +288,9 @@ namespace WalletSystem.Infrastructure.ExternalServices
                     };
                 }
 
-                var response = await _client.PostAsJsonAsync("api/v1/bank/accounts/verify", request,ct);
+
+                var response = await _client.PostAsJsonAsync( "api/v1/bank/accounts/verify", request,
+                          BankJsonOptions, ct);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -289,7 +303,7 @@ namespace WalletSystem.Infrastructure.ExternalServices
                     };
                 }
 
-                var result = await response.Content.ReadFromJsonAsync<VerifyBankResponse>();
+                var result = await response.Content.ReadFromJsonAsync<VerifyBankResponse>(BankJsonOptions,ct);
 
                 return result ?? new VerifyBankResponse
                 {
@@ -318,5 +332,16 @@ namespace WalletSystem.Infrastructure.ExternalServices
                 };
             }
         }
+
+
+        private static readonly JsonSerializerOptions BankJsonOptions = new(JsonSerializerDefaults.Web)
+        {
+            Converters =
+             {
+                 new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false)
+              }
+        };
+
+
     }
 }

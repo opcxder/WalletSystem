@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Security.Cryptography;
 using System.Text.Json;
+using WalletSystem.API.Middleware;
 using WalletSystem.Core.Interfaces.Repositories;
 using WalletSystem.Core.Interfaces.Services;
 using WalletSystem.Infrastructure.Config;
@@ -146,6 +147,7 @@ builder.Services.AddHttpClient<IBankVerificationService, BankVerificationService
 
 
 var app = builder.Build();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {

@@ -67,9 +67,8 @@ namespace SimulatedBank.Entities
 
             Balance += amount;
 
-            var transaction = Transaction.CreateCredit(BankAccountId, amount, description, externalReferenceId);
-            Transactions.Add(transaction);
-            return transaction;
+            return Transaction.CreateCredit(BankAccountId, amount, description, externalReferenceId);
+
         }
 
         public Transaction Debit(decimal amount, string description, Guid externalReferenceId)
@@ -81,9 +80,7 @@ namespace SimulatedBank.Entities
 
             Balance -= amount;
 
-            var transaction = Transaction.CreateDebit(BankAccountId, amount, description, externalReferenceId);
-            Transactions.Add(transaction);
-            return transaction;
+            return Transaction.CreateDebit(BankAccountId, amount, description, externalReferenceId);
         }
 
         public void Deactivate()

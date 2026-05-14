@@ -1,6 +1,7 @@
 ﻿
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Data.Common;
 using WalletSystem.Core.common;
 using WalletSystem.Core.DTOs.Transactions;
 using WalletSystem.Core.DTOs.Wallets;
@@ -19,6 +20,7 @@ namespace WalletSystem.Services.Transactions
         private readonly IUserRepository _userRepository;
         private readonly ILinkedBankAccountRepository _linkedBankAccountRepository;
         private readonly IVpaRepository _vpaRepository;
+        private readonly IUserCredentialsRepository _userCredentialsRepository;
         private readonly WalletContext _walletContext;
         private readonly IUnitOfWork _unitOfWork;
 
@@ -31,6 +33,7 @@ namespace WalletSystem.Services.Transactions
                                   IUserRepository userRepository,
                                   IBankVerificationService bankVerificationService,
                                   ILinkedBankAccountRepository linkedBankAccountRepository,
+                                  IUserCredentialsRepository userCredentialsRepository,
                                   IVpaRepository vpaRepository,
                                   WalletContext walletContext,
                                   IUnitOfWork unitOfWork
@@ -41,6 +44,7 @@ namespace WalletSystem.Services.Transactions
             _userRepository = userRepository;
             _bankVerificationService = bankVerificationService;
             _linkedBankAccountRepository = linkedBankAccountRepository;
+            _userCredentialsRepository = userCredentialsRepository;
             _vpaRepository = vpaRepository;
             _walletContext = walletContext;
             _unitOfWork = unitOfWork;
@@ -48,8 +52,7 @@ namespace WalletSystem.Services.Transactions
         }
 
 
-        public async Task<ServiceResult<TransactionResponse>> AddMoneyAsync(
-            Guid userId, AddMoneyRequest request, CancellationToken ct = default)
+        public async Task<ServiceResult<TransactionResponse>> AddMoneyAsync(Guid userId, AddMoneyRequest request, CancellationToken ct = default)
         {
             try
             {
@@ -107,7 +110,7 @@ namespace WalletSystem.Services.Transactions
                         existingTransaction.Amount != context.Transaction.Amount)
                     {
                         return ServiceResult<TransactionResponse>.Fail(
-                       "Transaction already exists with different request data.");
+                       "Transaction Already exists with different amount.");
                     }
 
                     if (existingTransaction == null)
@@ -184,9 +187,6 @@ namespace WalletSystem.Services.Transactions
             }
         }
 
-
-
-
         public async Task<ServiceResult<TransactionResponse>> GetByIdAsync(Guid userId, Guid transactionId, CancellationToken ct = default)
         {
             if (userId == Guid.Empty || transactionId == Guid.Empty)
@@ -231,7 +231,7 @@ namespace WalletSystem.Services.Transactions
             if (result == null || !result.Any())
             {
                 _logger.LogWarning("No result received from the Database");
-                return ServiceResult<List<TransactionResponse>>.Fail("No Transaction Found");
+                return ServiceResult<List<TransactionResponse>>.Ok(new());
             }
 
 
@@ -251,15 +251,188 @@ namespace WalletSystem.Services.Transactions
             return ServiceResult<List<TransactionResponse>>.Ok(response);
         }
 
-        public Task<ServiceResult<TransactionResponse>> SendMoneyAsync(Guid userId, SendMoneyRequest request, CancellationToken ct = default)
+        public async Task<ServiceResult<TransactionResponse>> SendMoneyAsync(Guid userId, SendMoneyRequest request, CancellationToken ct = default)
         {
-            throw new NotImplementedException();
+            try
+            {
+                var validateAndPrepaereResult = await ValidateAndPrepareSendMoneyAsync(userId, request, ct);
+                if (!validateAndPrepaereResult.Success)
+                {
+                    return ServiceResult<TransactionResponse>.Fail(validateAndPrepaereResult.Message ?? "Invalid Input");
+                }
+
+                if (validateAndPrepaereResult.TransactionResponse != null)
+                {
+                    return ServiceResult<TransactionResponse>.Ok(validateAndPrepaereResult.TransactionResponse);
+                }
+
+                var context = validateAndPrepaereResult.SendMoneyContext;
+
+                if (context == null)
+                {
+                    return ServiceResult<TransactionResponse>.Fail(validateAndPrepaereResult.Message ?? "Validate Input Error");
+                }
+
+                try
+                {
+                    await _transactionRepository.AddAsync(context.Transaction, ct);
+                    await _unitOfWork.SaveChangesAsync(ct);
+
+                }
+                catch (DbUpdateException ex)
+                {
+                    _logger.LogWarning(ex, "Send money transaction insert failed. Checking for idempotent replay.");
+
+                    var existingTransaction = await _transactionRepository.GetSendMoneyByIdempotencyKeyAsync(
+                          context.SenderWallet.WalletId,
+                          context.ReceiverWallet.WalletId,
+                           context.Transaction.IdempotencyKey, ct
+                        );
+
+                    if (existingTransaction != null && existingTransaction.Amount == request.Amount)
+                    {
+                        return ServiceResult<TransactionResponse>.Ok(new TransactionResponse
+                        {
+                            Amount = existingTransaction.Amount,
+                            TransactionId = existingTransaction.TransactionId,
+                            Status = existingTransaction.Status,
+                            CreatedAt = existingTransaction.CreatedAt,
+                            IsIdempotentReplay = true,
+                            ReferenceId = existingTransaction.ReferenceId ?? "Not Found",
+                            FailureReason = existingTransaction.FailureReason ?? existingTransaction.CompensationFailureReason,
+                            Type = existingTransaction.Type
+                        });
+                    }
+                    if (existingTransaction != null && existingTransaction.Amount != request.Amount)
+                    {
+                        return ServiceResult<TransactionResponse>.Fail("Transaction Already exists with different amount");
+                    }
+
+                    if (existingTransaction == null)
+                    {
+                        return ServiceResult<TransactionResponse>.Fail("Unable to create transaction, Please try again.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to create send money transaction.");
+                    return ServiceResult<TransactionResponse>.Fail("Unable to create the transaction, Please try again");
+                }
+                int maxRetries = 3;
+
+                for (int attempt = 0; attempt < maxRetries; attempt++)
+                {
+                    try
+                    {
+                        var transferResult = await CommitTransferAsync(context, ct);
+
+                        // business failure (non-exception)
+                        if (!transferResult.Success)
+                        {
+                            context.Transaction.MarkFailed(
+                                transferResult.Message ?? "Transfer failed");
+
+                            await _unitOfWork.SaveChangesAsync(ct);
+
+                            return ServiceResult<TransactionResponse>.Fail(
+                                transferResult.Message ?? "Transfer failed");
+                        }
+
+                        // success
+                        return ServiceResult<TransactionResponse>.Ok(
+                            new TransactionResponse
+                            {
+                                TransactionId = context.Transaction.TransactionId,
+                                Amount = context.Transaction.Amount,
+                                Status = context.Transaction.Status,
+                                IsIdempotentReplay = false,
+                                CreatedAt = context.Transaction.CreatedAt,
+                                Type = context.Transaction.Type,
+                                ReferenceId = context.Transaction.ReferenceId ?? "Not found"
+                            });
+                    }
+                    catch (DbUpdateConcurrencyException ex)
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "Concurrency conflict on attempt {Attempt} for transaction {TransactionId}",
+                            attempt + 1,
+                            context.Transaction.TransactionId);
+
+                        // final retry exhausted
+                        if (attempt == maxRetries - 1)
+                        {
+                            context.Transaction.MarkFailed(
+                                "Too many concurrent requests");
+
+                            await _unitOfWork.SaveChangesAsync(ct);
+
+                            return ServiceResult<TransactionResponse>.Fail(
+                                "Too many concurrent requests. Please retry.");
+                        }
+
+
+                        // retry next loop iteration
+                        continue;
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "Invalid transfer amount for transaction {TransactionId}",
+                            context.Transaction.TransactionId);
+
+                        context.Transaction.MarkFailed(ex.Message);
+
+                        await _unitOfWork.SaveChangesAsync(ct);
+
+                        return ServiceResult<TransactionResponse>.Fail(
+                            "Transfer amount must be greater than zero.");
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "Business rule failure for transaction {TransactionId}",
+                            context.Transaction.TransactionId);
+
+                        context.Transaction.MarkFailed(ex.Message);
+
+                        await _unitOfWork.SaveChangesAsync(ct);
+
+                        return ServiceResult<TransactionResponse>.Fail(
+                            ex.Message);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Unexpected error while processing transaction {TransactionId}",
+                            context.Transaction.TransactionId);
+
+                        context.Transaction.MarkFailed(
+                            "Unexpected transfer error");
+
+                        await _unitOfWork.SaveChangesAsync(ct);
+
+                        return ServiceResult<TransactionResponse>.Fail(
+                            "Something went wrong while transferring money.");
+                    }
+                }
+
+                // defensive fallback
+                return ServiceResult<TransactionResponse>.Fail(
+                    "Transfer could not be completed.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled exception in Send Money");
+
+                return ServiceResult<TransactionResponse>.Fail("Unexpected error");
+            }
         }
 
-
-
-        private async Task<AddMoneyValidationResult> ValidateAndPrepareAsync(
-        Guid userId, AddMoneyRequest request, CancellationToken ct)
+        private async Task<AddMoneyValidationResult> ValidateAndPrepareAsync(Guid userId, AddMoneyRequest request, CancellationToken ct)
         {
             if (userId == Guid.Empty)
             {
@@ -451,8 +624,7 @@ namespace WalletSystem.Services.Transactions
             };
         }
 
-        private async Task<BankDebitResult> DebitBankAsync(
-        AddMoneyContext context, CancellationToken ct)
+        private async Task<BankDebitResult> DebitBankAsync(AddMoneyContext context, CancellationToken ct)
         {
             try
             {
@@ -539,8 +711,7 @@ namespace WalletSystem.Services.Transactions
             }
         }
 
-        private async Task<CommitWalletResult> CommitWalletCreditAsync(
-        AddMoneyContext context, CancellationToken ct, int attempt = 0)
+        private async Task<CommitWalletResult> CommitWalletCreditAsync(AddMoneyContext context, CancellationToken ct, int attempt = 0)
         {
             await using var dbTransaction = await _walletContext.Database.BeginTransactionAsync(ct);
             try
@@ -592,8 +763,7 @@ namespace WalletSystem.Services.Transactions
                 return new CommitWalletResult { Success = false, Message = "Wallet update failed" };
             }
         }
-        private async Task<CommitWalletResult> CompensateBankCreditAsync(
-                     AddMoneyContext context, CancellationToken ct)
+        private async Task<CommitWalletResult> CompensateBankCreditAsync(AddMoneyContext context, CancellationToken ct)
         {
             if (context.Transaction.Status == TransactionStatus.Compensated)
             {
@@ -720,10 +890,381 @@ namespace WalletSystem.Services.Transactions
         }
 
 
+        private async Task<SendMoneyValidationResult> ValidateAndPrepareSendMoneyAsync(Guid userId, SendMoneyRequest request, CancellationToken ct)
+        {
+            if (userId == Guid.Empty)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Empty Input"
+                };
+            }
+
+            if (request == null)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Empty Request"
+                };
+            }
+
+            if (request.Amount <= 0 || request.Amount > 10000)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Invalid amount"
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.IdempotencyKey) ||
+                string.IsNullOrWhiteSpace(request.ReceiverVpa) ||
+                string.IsNullOrWhiteSpace(request.PaymentPin)
+                )
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Request parameter empty"
+                };
+            }
+
+
+            var normalizedKey = request.IdempotencyKey.Trim().ToLowerInvariant();
+            var normalizedReceiverVpa = request.ReceiverVpa.Trim().ToLowerInvariant();
+
+            var senderUser = await _userRepository.GetByIdAsync(userId, ct);
+            if (senderUser == null)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Sender User not found"
+                };
+            }
+
+            if (senderUser.Status != UserStatus.Active)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Sender User not Active"
+                };
+            }
+
+            var senderWallet = await _walletRepository.GetByUserIdForUpdateAsync(userId, ct);
+            if (senderWallet == null)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Sender wallet not found"
+                };
+            }
+
+            if (senderWallet.Status != WalletStatus.Active)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Sender Wallet not Active"
+                };
+            }
+
+            var receiverVpa = await _vpaRepository.GetByAddressAsync(normalizedReceiverVpa, ct);
+            if (receiverVpa == null)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Receier Vpa Address not found"
+                };
+            }
+
+            if (senderWallet.WalletId == receiverVpa.WalletId)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Cannot transfer to same wallet"
+                };
+            }
+
+            var receiverWallet = await _walletRepository.GetByWalletIdForUpdateAsync(receiverVpa.WalletId, ct);
+            if (receiverWallet == null)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = " Receiver wallet not found"
+                };
+            }
+            if (receiverWallet.Status != WalletStatus.Active)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = " Recevier Wallet is not active"
+                };
+            }
+
+            var receiverUser = await _userRepository.GetByIdAsync(receiverWallet.UserId, ct);
+            if (receiverUser == null)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Receiver User not found"
+                };
+            }
+
+
+            if (receiverUser.Status != UserStatus.Active)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = " Receiver User not Active"
+                };
+            }
+
+
+            var userCredentials = await _userCredentialsRepository.GetByUserIdAsync(userId, ct);
+            if (userCredentials == null)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = " User  credentails  not found"
+                };
+            }
+
+            if (!BCrypt.Net.BCrypt.Verify(request.PaymentPin, userCredentials.PaymentPinHash))
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Invalid payment PIN"
+                };
+            }
+
+
+            if (senderWallet.Balance < request.Amount)
+            {
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Insufficient Balance"
+                };
+            }
+
+            var existingTransaction = await _transactionRepository.GetSendMoneyByIdempotencyKeyAsync(senderWallet.WalletId, receiverWallet.WalletId, normalizedKey, ct);
+            if (existingTransaction != null)
+            {
+
+                if (existingTransaction.Amount == request.Amount)
+                {
+                    return new SendMoneyValidationResult
+                    {
+                        Success = true,
+                        Message = "Transaction found with same ID",
+                        TransactionResponse = new TransactionResponse
+                        {
+                            TransactionId = existingTransaction.TransactionId,
+                            ReferenceId = existingTransaction.ReferenceId ?? "Not found",
+                            Status = existingTransaction.Status,
+                            Amount = existingTransaction.Amount,
+                            CreatedAt = existingTransaction.CreatedAt,
+                            IsIdempotentReplay = true,
+                            Type = existingTransaction.Type,
+                            FailureReason = existingTransaction.FailureReason ?? existingTransaction.CompensationFailureReason
+                        }
+
+                    };
+                }
+
+                return new SendMoneyValidationResult
+                {
+                    Success = false,
+                    Message = "Transaction already exists with different amount"
+                };
+            }
+
+
+            var transaction = new Transaction
+            {
+                TransactionId = Guid.NewGuid(),
+                SourceType = SourceType.Wallet,
+                SourceWalletId = senderWallet.WalletId,
+                ReferenceId = GenerateReferenceId(),
+                DestinationWalletId = receiverWallet.WalletId,
+                DestinationVPA = receiverVpa.VpaAddress,
+                Amount = request.Amount,
+                Status = TransactionStatus.Initiated,
+                IdempotencyKey = normalizedKey,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                Description = "Wallet Transfer Initiated",
+                Type = TransactionType.Transfer
+            };
+
+
+            return new SendMoneyValidationResult
+            {
+                Success = true,
+                Message = "Input Validation done",
+                SendMoneyContext = new SendMoneyContext
+                {
+                    SenderUser = senderUser,
+                    SenderWallet = senderWallet,
+                    ReceiverVpa = receiverVpa,
+                    ReceiverWallet = receiverWallet,
+                    Transaction = transaction,
+                    ReceiverUser = receiverUser
+                }
+            };
+
+        }
+
+
+
+        private async Task<CommitTransferResult> CommitTransferAsync(SendMoneyContext context, CancellationToken ct)
+        {
+            return await _unitOfWork.ExecuteInTransactionAsync(async () =>
+            {
+
+                var senderWallet = await _walletRepository.GetByUserIdForUpdateAsync(context.SenderUser.UserId,ct);
+
+                if (senderWallet == null)
+                {
+                    return new CommitTransferResult
+                    {   
+                        Success = false,
+                        Message = " Sender Wallet Not Found",
+                        Retryable = false,
+                    };
+                }
+
+                if (senderWallet.Status != WalletStatus.Active)
+                {
+                    return new CommitTransferResult
+                    {
+                        Success = false,
+                        Retryable = false,
+                        Message = "Sender Wallet is not Active",
+                    };
+                }
+
+                if (context.SenderUser.Status != UserStatus.Active)
+                {
+                    return new CommitTransferResult
+                    {
+                        Success = false,
+                        Retryable = false,
+                        Message = "User is not active"
+                    };
+                }
+
+                var receiverWallet = await _walletRepository.GetByWalletIdForUpdateAsync(context.ReceiverWallet.WalletId,ct);
+
+                if (receiverWallet == null)
+                {
+                    return new CommitTransferResult
+                    {
+                        Success = false,
+                        Message = " Receiver Wallet Not Found",
+                        Retryable = false,
+                    };
+                }
+
+                if (receiverWallet.Status != WalletStatus.Active)
+                {
+                    return new CommitTransferResult
+                    {
+                        Success = false,
+                        Retryable = false,
+                        Message = "Receiver Wallet is not Active",
+                    };
+                }
+
+                if (context.ReceiverUser.Status != UserStatus.Active)
+                {
+                    return new CommitTransferResult
+                    {
+                        Success = false,
+                        Retryable = false,
+                        Message = "Receiver User is not active"
+                    };
+                }
+
+                if (context.Transaction.Amount > senderWallet.Balance)
+                {
+                    return new CommitTransferResult
+                    {
+                        Success = false,
+                        Message = "Insufficient Balance",
+                        Retryable = false,
+                    };
+                }
+
+                var balanceBefore = senderWallet.Balance;
+                senderWallet.ApplyDebit(context.Transaction.Amount);
+                var balanceAfter = senderWallet.Balance;
+
+
+                await _walletContext.LedgerEntries.AddAsync(new LedgerEntry
+                {
+                    EntryId = Guid.NewGuid(),
+                    CreatedAt = DateTime.UtcNow,
+                    BalanceBefore = balanceBefore,
+                    Amount = context.Transaction.Amount,
+                    BalanceAfter = balanceAfter,
+                    EntryType = EntryType.Debit,
+                    TransactionId = context.Transaction.TransactionId,
+                    WalletId = senderWallet.WalletId,
+
+                });
+
+
+                var receiverBalanceBefore = receiverWallet.Balance;
+                receiverWallet.ApplyCredit(context.Transaction.Amount);
+                var receiverBalanceAfter = receiverWallet.Balance;
+
+                await _walletContext.LedgerEntries.AddAsync(new LedgerEntry
+                {
+                    EntryId = Guid.NewGuid(),
+                    CreatedAt = DateTime.UtcNow,
+                    BalanceBefore = receiverBalanceBefore,
+                    Amount = context.Transaction.Amount,
+                    BalanceAfter = receiverBalanceAfter,
+                    EntryType = EntryType.Credit,
+                    TransactionId = context.Transaction.TransactionId,
+                    WalletId = receiverWallet.WalletId,
+
+                });
+
+
+                context.Transaction.MarkSuccess();
+                return new CommitTransferResult
+                {
+                    Success = true,
+                    Retryable = false,
+                    Message = "Transaction Successfull"
+                };
+            });
+        }
+
+
+
+
 
         private static string GenerateReferenceId()
         {
             return $"TXN{DateTime.UtcNow:yyyyMMddHHmmssfff}{Random.Shared.Next(100000, 999999)}";
         }
+
+
     }
 }

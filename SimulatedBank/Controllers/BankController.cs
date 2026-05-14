@@ -19,9 +19,9 @@ namespace SimulatedBank.Controllers
 
 
         [HttpPost("verify")]
-        public async Task<IActionResult> VerifyAccount([FromBody] VerifyAccount verifyAccount, CancellationToken ct )
+        public async Task<IActionResult> VerifyAccount([FromBody] VerifyAccount VerifyAccountRequest, CancellationToken ct )
         {
-            _logger.LogInformation("Verifying account {AccountNumber}", verifyAccount.AccountNumber);
+           
 
             if (!ModelState.IsValid)
             {
@@ -33,7 +33,7 @@ namespace SimulatedBank.Controllers
                 return BadRequest(response);
             }
 
-            if(verifyAccount == null)
+            if(VerifyAccountRequest == null)
             {
                 var response = new VerifyAccountResponse
                 {
@@ -42,11 +42,11 @@ namespace SimulatedBank.Controllers
                 };
                 return BadRequest(response);
             }
+            _logger.LogInformation("Verifying account {AccountNumber}", VerifyAccountRequest.AccountNumber);
 
-
-                try
+            try
             {
-                var result = await _bankService.VerifyAccountHolder(verifyAccount,ct);
+                var result = await _bankService.VerifyAccountHolder(VerifyAccountRequest, ct);
                 return Ok(result);
             }
             catch (Exception ex)

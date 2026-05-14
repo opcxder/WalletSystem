@@ -17,7 +17,27 @@ namespace WalletSystem.Infrastructure.Data
         public DbSet<LedgerEntry> LedgerEntries { get; set; }
         public DbSet<LinkedBankAccount> LinkedBankAccounts { get; set; }
 
-      
+        public async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> operations, CancellationToken ct = default)
+        {
+
+            await using var transaction = await Database.BeginTransactionAsync(ct);
+
+            try
+            {
+                var result = await operations();
+
+                await SaveChangesAsync();
+
+                await transaction.CommitAsync(ct);
+
+                return result;
+
+            }catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

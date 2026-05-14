@@ -108,6 +108,23 @@ namespace WalletSystem.Infrastructure.Repositories
         }
 
 
+        public async Task<Transaction?> GetSendMoneyByIdempotencyKeyAsync(Guid senderWalletId, Guid receiverWalletId , string idempotencyKey , CancellationToken ct =default)
+        {
+            ValidateId(senderWalletId);
+            ValidateId(receiverWalletId);
+
+            if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new ArgumentNullException(nameof(idempotencyKey));
+
+
+            return await _walletContext.Transactions.AsNoTracking().FirstOrDefaultAsync(t =>
+             t.Type == Core.Enums.TransactionType.Transfer && 
+              t.IdempotencyKey == idempotencyKey && 
+              t.SourceWalletId == senderWalletId && 
+              t.DestinationWalletId == receiverWalletId ,ct);
+
+        }
+
+
 
         private static void ValidateId(Guid id)
         {

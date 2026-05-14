@@ -297,18 +297,27 @@ namespace SimulatedBank.Services
                 };
             }
 
-           
-
-           
 
             try
             {
                 var transaction = account.Debit(amount, "Wallet debit request", externalReferenceId);
 
-                transaction.MarkSuccess();
 
+                transaction.MarkSuccess();
+                _bankContext.Transactions.Add(transaction);
+
+
+                foreach (var entry in _bankContext.ChangeTracker.Entries())
+                {
+                    _logger.LogWarning(
+                        "{Entity} - {State}",
+                        entry.Entity.GetType().Name,
+                        entry.State);
+                }
 
                 await _bankContext.SaveChangesAsync(ct);
+
+              
 
                 return new OperationResponse
                 {
@@ -320,8 +329,18 @@ namespace SimulatedBank.Services
                     IsIdempotentReplay = false
                 };
             }
-            catch (DbUpdateConcurrencyException)
+            catch (DbUpdateConcurrencyException ex)
             {
+                _logger.LogWarning(ex,
+     "Bank debit concurrency conflict for ExternalBankAccountId {ExternalBankAccountId}, ExternalReferenceId {ExternalReferenceId}",
+     externalBankAccountId,
+     externalReferenceId);
+
+                foreach (var entry in ex.Entries)
+                {
+                    _logger.LogWarning("Concurrency entity: {Entity} State: {state}", entry.Entity.GetType().Name , entry.State);
+                }
+
                 return new OperationResponse
                 {
                     Success = false,
@@ -439,8 +458,8 @@ namespace SimulatedBank.Services
             try
             {
                 var transaction = account.Credit(amount, "Wallet credit request", externalReferenceId);
-
                 transaction.MarkSuccess();
+                _bankContext.Transactions.Add(transaction);
 
 
                 await _bankContext.SaveChangesAsync(ct);

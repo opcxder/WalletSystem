@@ -17,5 +17,7 @@ namespace WalletSystem.Core.Interfaces.Repositories
 
         Task<Transaction?> GetAddMoneyByIdempotencyAsync(Guid destinationWalletId, Guid sourceBankAccountId, string idempotencyKey, CancellationToken ct = default);
 
+        Task<Transaction?> GetSendMoneyByIdempotencyKeyAsync(Guid senderWalletId, Guid receiverWalletId, string idempotencyKey, CancellationToken ct = default);
+
     }
 }

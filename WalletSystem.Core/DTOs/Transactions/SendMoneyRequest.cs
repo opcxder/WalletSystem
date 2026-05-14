@@ -1,7 +1,7 @@
 ﻿
 
 using System.ComponentModel.DataAnnotations;
-using WalletSystem.Core.Enums;
+
 
 namespace WalletSystem.Core.DTOs.Transactions
 {
